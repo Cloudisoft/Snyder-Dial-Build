@@ -7,6 +7,7 @@ import knowledgeBaseRouter from "./knowledge_base";
 import callsRouter from "./calls";
 import promptTemplatesRouter from "./prompt_templates";
 import dashboardRouter from "./dashboard";
+import settingsRouter from "./settings";
 import webhooksRouter from "./webhooks";
 
 const router: IRouter = Router();
@@ -19,6 +20,7 @@ router.use(knowledgeBaseRouter);
 router.use(callsRouter);
 router.use(promptTemplatesRouter);
 router.use(dashboardRouter);
+router.use(settingsRouter);
 router.use(webhooksRouter);
 
 export default router;

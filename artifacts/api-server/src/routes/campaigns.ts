@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, count, and } from "drizzle-orm";
-import { db, campaignsTable, leadsTable, callLogsTable, activityLogTable } from "@workspace/db";
+import { db, campaignsTable, leadsTable, callLogsTable, activityLogTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { initiateVapiCall, interpolatePrompt } from "../lib/vapi";
 import { logger } from "../lib/logger";
@@ -107,7 +107,14 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
   res.json(campaign);
 
   // Kick off VAPI calls for all pending leads (fire-and-forget after response)
-  if (campaign.vapiApiKey && campaign.twilioAccountSid && campaign.twilioAuthToken && campaign.twilioPhoneNumber) {
+  // Resolve credentials: campaign-level overrides user-level (global integrations)
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId));
+  const resolvedVapiKey = campaign.vapiApiKey || user?.vapiApiKey;
+  const resolvedTwilioSid = campaign.twilioAccountSid || user?.twilioAccountSid;
+  const resolvedTwilioToken = campaign.twilioAuthToken || user?.twilioAuthToken;
+  const resolvedTwilioPhone = campaign.twilioPhoneNumber || user?.twilioPhoneNumber;
+
+  if (resolvedVapiKey && resolvedTwilioSid && resolvedTwilioToken && resolvedTwilioPhone) {
     const pendingLeads = await db
       .select()
       .from(leadsTable)
@@ -133,10 +140,10 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
         });
 
         const { callId } = await initiateVapiCall({
-          vapiApiKey: campaign.vapiApiKey!,
-          twilioAccountSid: campaign.twilioAccountSid!,
-          twilioAuthToken: campaign.twilioAuthToken!,
-          twilioPhoneNumber: campaign.twilioPhoneNumber!,
+          vapiApiKey: resolvedVapiKey,
+          twilioAccountSid: resolvedTwilioSid,
+          twilioAuthToken: resolvedTwilioToken,
+          twilioPhoneNumber: resolvedTwilioPhone,
           toNumber: lead.phone,
           customerName: lead.name,
           systemPrompt,

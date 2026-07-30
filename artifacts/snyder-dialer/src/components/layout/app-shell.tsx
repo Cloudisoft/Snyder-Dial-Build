@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
-import { LayoutDashboard, Megaphone, FileText, Phone, LogOut } from 'lucide-react';
+import { LayoutDashboard, Megaphone, FileText, Phone, LogOut, Plug } from 'lucide-react';
 import { useLogout } from '@workspace/api-client-react';
 import { removeToken } from '@/lib/auth';
 import { useToast } from '@/hooks/use-toast';
@@ -33,6 +33,7 @@ export function AppShell({ children }: AppShellProps) {
     { path: '/campaigns', icon: Megaphone, label: 'Campaigns' },
     { path: '/prompt-templates', icon: FileText, label: 'Templates' },
     { path: '/calls', icon: Phone, label: 'Calls' },
+    { path: '/integrations', icon: Plug, label: 'Integrations' },
   ];
 
   return (

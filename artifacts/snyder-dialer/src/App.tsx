@@ -13,6 +13,7 @@ import Campaigns from '@/pages/campaigns';
 import CampaignDetail from '@/pages/campaign-detail';
 import PromptTemplates from '@/pages/prompt-templates';
 import Calls from '@/pages/calls';
+import Integrations from '@/pages/integrations';
 import { AppShell } from '@/components/layout/app-shell';
 
 const queryClient = new QueryClient({
@@ -95,6 +96,15 @@ function Router() {
           <AuthGuard>
             <AppShell>
               <Calls />
+            </AppShell>
+          </AuthGuard>
+        )}
+      </Route>
+      <Route path="/integrations">
+        {() => (
+          <AuthGuard>
+            <AppShell>
+              <Integrations />
             </AppShell>
           </AuthGuard>
         )}
