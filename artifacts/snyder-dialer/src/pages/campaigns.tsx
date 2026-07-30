@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'wouter';
 import { useListCampaigns, useCreateCampaign, useDeleteCampaign, getListCampaignsQueryKey } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
-import { Plus, Trash2, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, UserPlus, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -177,14 +177,20 @@ export default function Campaigns() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Link href={`/campaigns/${campaign.id}?tab=leads`}>
+                      <Button variant="outline" size="sm" data-testid={`button-leads-${campaign.id}`}>
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Add Leads
+                      </Button>
+                    </Link>
                     <Link href={`/campaigns/${campaign.id}`}>
-                      <Button variant="outline" size="sm" data-testid={`button-view-${campaign.id}`}>
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        View
+                      <Button size="sm" data-testid={`button-view-${campaign.id}`}>
+                        <Play className="w-4 h-4 mr-2" />
+                        Open
                       </Button>
                     </Link>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => handleDelete(campaign.id)}
                       disabled={deleteCampaign.isPending}

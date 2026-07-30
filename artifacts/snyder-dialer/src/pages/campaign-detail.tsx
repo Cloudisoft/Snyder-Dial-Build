@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { useParams, useLocation } from 'wouter';
+import { useState, useRef, useEffect } from 'react';
+import { useParams, useLocation, useSearch } from 'wouter';
 import {
   useGetCampaign,
   useUpdateCampaign,
@@ -26,17 +26,25 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
+import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { getToken } from '@/lib/auth';
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export default function CampaignDetail() {
   const params = useParams();
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const campaignId = Number(params.id);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Read ?tab= from URL to allow direct linking to a tab
+  const defaultTab = new URLSearchParams(search).get('tab') ?? 'overview';
 
   const { data: campaign, isLoading: campaignLoading } = useGetCampaign(campaignId);
   const { data: stats } = useGetCampaignStats(campaignId);
@@ -61,6 +69,26 @@ export default function CampaignDetail() {
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
 
+  // Add-lead dialog state
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [leadName, setLeadName] = useState('');
+  const [leadPhone, setLeadPhone] = useState('');
+  const [leadEmail, setLeadEmail] = useState('');
+  const [leadCompany, setLeadCompany] = useState('');
+  const [leadNotes, setLeadNotes] = useState('');
+  const [addingLead, setAddingLead] = useState(false);
+
+  // Global integrations creds (to determine if credentials are truly missing)
+  const [globalCredsSet, setGlobalCredsSet] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch(`${BASE}/api/settings/integrations`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setGlobalCredsSet(!!(d.vapiApiKeySet && d.twilioAccountSid && d.twilioAuthTokenSet && d.twilioPhoneNumber)))
+      .catch(() => setGlobalCredsSet(false));
+  }, []);
+
   // Initialize form when campaign loads
   if (campaign && !masterPrompt && !twilioAccountSid) {
     setMasterPrompt(campaign.masterPrompt);
@@ -70,13 +98,37 @@ export default function CampaignDetail() {
     setVapiApiKey(campaign.vapiApiKey || '');
   }
 
-  const credentialsMissing = !campaign?.vapiApiKey || !campaign?.twilioAccountSid || !campaign?.twilioAuthToken || !campaign?.twilioPhoneNumber;
+  const campaignCredsSet = !!(campaign?.vapiApiKey && campaign?.twilioAccountSid && campaign?.twilioAuthToken && campaign?.twilioPhoneNumber);
+  // Credentials OK if either campaign-level or global integrations are configured
+  const credentialsMissing = !campaignCredsSet && globalCredsSet === false;
+
+  const handleAddLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddingLead(true);
+    try {
+      const res = await fetch(`${BASE}/api/campaigns/${campaignId}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ name: leadName, phone: leadPhone, email: leadEmail || undefined, company: leadCompany || undefined, notes: leadNotes || undefined }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Failed to add lead');
+      queryClient.invalidateQueries({ queryKey: getListLeadsQueryKey(campaignId) });
+      queryClient.invalidateQueries({ queryKey: getGetCampaignStatsQueryKey(campaignId) });
+      toast({ title: `Lead "${leadName}" added` });
+      setLeadName(''); setLeadPhone(''); setLeadEmail(''); setLeadCompany(''); setLeadNotes('');
+      setAddLeadOpen(false);
+    } catch (err: unknown) {
+      toast({ title: 'Failed to add lead', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setAddingLead(false);
+    }
+  };
 
   const handleLaunch = () => {
     if (credentialsMissing) {
       toast({
         title: 'Credentials required',
-        description: 'Please fill in your VAPI API Key and Twilio credentials in the Settings tab before launching.',
+        description: 'Add VAPI and Twilio credentials in Integrations (sidebar) or this campaign\'s Settings tab.',
         variant: 'destructive',
       });
       return;
@@ -142,7 +194,8 @@ export default function CampaignDetail() {
     formData.append('file', file);
 
     importLeads.mutate(
-      { id: campaignId, data: formData },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: campaignId, data: formData as any },
       {
         onSuccess: (result) => {
           queryClient.invalidateQueries({ queryKey: getListLeadsQueryKey(campaignId) });
@@ -165,7 +218,8 @@ export default function CampaignDetail() {
     formData.append('file', file);
 
     addKbDoc.mutate(
-      { id: campaignId, data: formData },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { id: campaignId, data: formData as any },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListKnowledgeBaseFilesQueryKey(campaignId) });
@@ -266,7 +320,7 @@ export default function CampaignDetail() {
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs defaultValue={defaultTab} className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
           <TabsTrigger value="leads" data-testid="tab-leads">Leads</TabsTrigger>
@@ -338,10 +392,56 @@ export default function CampaignDetail() {
         </TabsContent>
 
         <TabsContent value="leads">
+          {/* Add Lead dialog */}
+          <Dialog open={addLeadOpen} onOpenChange={setAddLeadOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Lead</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddLead} className="space-y-4 mt-2">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="leadName">Full Name *</Label>
+                    <Input id="leadName" value={leadName} onChange={e => setLeadName(e.target.value)} required className="mt-1.5" placeholder="Jane Smith" />
+                  </div>
+                  <div>
+                    <Label htmlFor="leadPhone">Phone Number *</Label>
+                    <Input id="leadPhone" value={leadPhone} onChange={e => setLeadPhone(e.target.value)} required className="mt-1.5 font-mono" placeholder="+15551234567" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="leadEmail">Email</Label>
+                    <Input id="leadEmail" type="email" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} className="mt-1.5" placeholder="jane@company.com" />
+                  </div>
+                  <div>
+                    <Label htmlFor="leadCompany">Company</Label>
+                    <Input id="leadCompany" value={leadCompany} onChange={e => setLeadCompany(e.target.value)} className="mt-1.5" placeholder="Acme Corp" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="leadNotes">Notes</Label>
+                  <Textarea id="leadNotes" value={leadNotes} onChange={e => setLeadNotes(e.target.value)} className="mt-1.5" placeholder="Any context for the AI..." rows={3} />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setAddLeadOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={addingLead}>{addingLead ? 'Adding...' : 'Add Lead'}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+
           <div className="bg-card border border-card-border rounded-lg">
             <div className="px-6 py-4 border-b border-card-border flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Leads</h2>
               <div>
+                <h2 className="text-lg font-semibold">Leads</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Add individual leads or bulk-import via CSV</p>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAddLeadOpen(true)} data-testid="button-add-lead">
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Add Lead
+                </Button>
                 <input
                   ref={leadsFileRef}
                   type="file"

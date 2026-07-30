@@ -17,6 +17,29 @@ router.get("/campaigns/:id/leads", requireAuth, async (req, res): Promise<void> 
   res.json(leads);
 });
 
+router.post("/campaigns/:id/leads", requireAuth, async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const campaignId = parseInt(raw, 10);
+  if (isNaN(campaignId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { name, phone, email, company, notes } = req.body;
+  if (!name || !phone) { res.status(400).json({ error: "name and phone are required" }); return; }
+
+  const [lead] = await db.insert(leadsTable).values({
+    campaignId, name, phone,
+    email: email || null,
+    company: company || null,
+    notes: notes || null,
+    status: "pending",
+  }).returning();
+
+  await db.update(campaignsTable)
+    .set({ totalLeads: sql`${campaignsTable.totalLeads} + 1` })
+    .where(eq(campaignsTable.id, campaignId));
+
+  res.status(201).json(lead);
+});
+
 router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const campaignId = parseInt(raw, 10);
