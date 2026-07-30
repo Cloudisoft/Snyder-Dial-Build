@@ -112,6 +112,9 @@ export const ListCampaignsResponseItem = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -144,6 +147,9 @@ export const CreateCampaignResponse = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -166,6 +172,9 @@ export const GetCampaignResponse = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -201,6 +210,9 @@ export const UpdateCampaignResponse = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -233,6 +245,9 @@ export const LaunchCampaignResponse = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -255,6 +270,9 @@ export const PauseCampaignResponse = zod.object({
   "twilioAuthToken": zod.string().nullish(),
   "twilioPhoneNumber": zod.string().nullish(),
   "vapiApiKey": zod.string().nullish(),
+  "vapiAssistantId": zod.string().nullish(),
+  "totalLeads": zod.number().optional(),
+  "calledLeads": zod.number().optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

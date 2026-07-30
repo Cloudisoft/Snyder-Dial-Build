@@ -2,8 +2,59 @@ import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
-import { db, leadsTable, activityLogTable, campaignsTable } from "@workspace/db";
+import { db, leadsTable, activityLogTable, campaignsTable, usersTable, callLogsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import { initiateVapiCall, interpolatePrompt } from "../lib/vapi";
+import { logger } from "../lib/logger";
+
+/** Fire-and-forget: dial a lead immediately if the campaign is active and credentials are available. */
+async function dialLeadIfActive(campaignId: number, leadId: number, userId: number): Promise<void> {
+  const [campaign] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, campaignId));
+  if (!campaign || campaign.status !== "active") return;
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+  const vapiKey = campaign.vapiApiKey || user?.vapiApiKey;
+  const twilioSid = campaign.twilioAccountSid || user?.twilioAccountSid;
+  const twilioToken = campaign.twilioAuthToken || user?.twilioAuthToken;
+  const twilioPhone = campaign.twilioPhoneNumber || user?.twilioPhoneNumber;
+  if (!vapiKey || !twilioSid || !twilioToken || !twilioPhone) return;
+
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId));
+  if (!lead || lead.status !== "pending") return;
+
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  const webhookHost = replitDomains
+    ? `https://${replitDomains.split(",")[0].trim()}`
+    : devDomain ? `https://${devDomain}` : (process.env.API_BASE_URL ?? "");
+  const webhookUrl = `${webhookHost}/api/webhooks/vapi`;
+
+  try {
+    await db.update(leadsTable).set({ status: "calling" }).where(eq(leadsTable.id, leadId));
+    const systemPrompt = interpolatePrompt(campaign.masterPrompt, {
+      name: lead.name, company: lead.company, phone: lead.phone, email: lead.email, notes: lead.notes,
+    });
+    const { callId } = await initiateVapiCall({
+      vapiApiKey: vapiKey,
+      toNumber: lead.phone,
+      customerName: lead.name,
+      systemPrompt,
+      webhookUrl,
+      assistantId: campaign.vapiAssistantId ?? undefined,
+      phoneNumberId: user?.vapiPhoneNumberId ?? undefined,
+      twilioAccountSid: twilioSid ?? undefined,
+      twilioAuthToken: twilioToken ?? undefined,
+      twilioPhoneNumber: twilioPhone ?? undefined,
+    });
+    await db.insert(callLogsTable).values({
+      campaignId, leadId, vapiCallId: callId, status: "initiated", startedAt: new Date(),
+    });
+    logger.info({ campaignId, leadId, callId }, "Auto-dialed lead added to active campaign");
+  } catch (err) {
+    logger.error({ campaignId, leadId, err }, "Failed to auto-dial lead");
+    await db.update(leadsTable).set({ status: "pending" }).where(eq(leadsTable.id, leadId));
+  }
+}
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -38,6 +89,9 @@ router.post("/campaigns/:id/leads", requireAuth, async (req, res): Promise<void>
     .where(eq(campaignsTable.id, campaignId));
 
   res.status(201).json(lead);
+
+  // Fire-and-forget: dial immediately if campaign is already active
+  dialLeadIfActive(campaignId, lead.id, req.auth!.userId).catch(() => {});
 });
 
 router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
@@ -57,6 +111,7 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
 
   let imported = 0;
   let skipped = 0;
+  const insertedIds: number[] = [];
 
   for (const row of records) {
     // Support multiple column name variants
@@ -64,7 +119,7 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
     const phone = row["phone"] || row["Phone"] || row["phone_number"] || row["Phone Number"] || "";
     if (!name || !phone) { skipped++; continue; }
 
-    await db.insert(leadsTable).values({
+    const [lead] = await db.insert(leadsTable).values({
       campaignId,
       name,
       phone,
@@ -72,7 +127,8 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
       company: row["company"] || row["Company"] || null,
       notes: row["notes"] || row["Notes"] || null,
       status: "pending",
-    });
+    }).returning();
+    insertedIds.push(lead.id);
     imported++;
   }
 
@@ -93,6 +149,11 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
   }
 
   res.json({ imported, skipped, total: records.length });
+
+  // Fire-and-forget: dial all newly imported leads if campaign is already active
+  for (const leadId of insertedIds) {
+    dialLeadIfActive(campaignId, leadId, req.auth!.userId).catch(() => {});
+  }
 });
 
 router.delete("/leads/:id", requireAuth, async (req, res): Promise<void> => {

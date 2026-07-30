@@ -29,7 +29,7 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus, ChevronDown, ChevronRight, Clock, MessageSquare, Mic } from 'lucide-react';
+import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus, ChevronDown, ChevronRight, Clock, MessageSquare, Mic, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { getToken } from '@/lib/auth';
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -68,6 +68,9 @@ export default function CampaignDetail() {
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
 
+  // VAPI sync state
+  const [syncing, setSyncing] = useState(false);
+
   // Add-lead dialog state
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [leadName, setLeadName] = useState('');
@@ -100,6 +103,24 @@ export default function CampaignDetail() {
   const campaignCredsSet = !!(campaign?.vapiApiKey && campaign?.twilioAccountSid && campaign?.twilioAuthToken && campaign?.twilioPhoneNumber);
   // Credentials OK if either campaign-level or global integrations are configured
   const credentialsMissing = !campaignCredsSet && globalCredsSet === false;
+
+  const handleSyncVapi = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch(`${BASE}/api/campaigns/${campaignId}/sync-vapi`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Sync failed');
+      queryClient.invalidateQueries({ queryKey: getGetCampaignQueryKey(campaignId) });
+      toast({ title: 'VAPI agent synced', description: `Assistant ID: ${data.assistantId}` });
+    } catch (err: unknown) {
+      toast({ title: 'Sync failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -707,6 +728,44 @@ export default function CampaignDetail() {
                 </a>. VAPI handles the AI voice conversation; Twilio handles the phone call.
               </p>
             </div>
+          </div>
+
+          {/* VAPI Agent Sync */}
+          <div className="bg-card border border-card-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h2 className="text-lg font-semibold">VAPI Agent</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Creates a persistent AI agent in VAPI using this campaign's Master Prompt.
+                  Sync after every prompt change.
+                </p>
+              </div>
+              {campaign.vapiAssistantId && (
+                <span className="flex items-center gap-1.5 text-xs text-chart-5 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Synced
+                </span>
+              )}
+            </div>
+            {campaign.vapiAssistantId && (
+              <p className="text-xs font-mono text-muted-foreground mb-3 mt-2 bg-muted px-3 py-1.5 rounded">
+                Agent ID: {campaign.vapiAssistantId}
+              </p>
+            )}
+            <Button
+              variant={campaign.vapiAssistantId ? 'outline' : 'default'}
+              size="sm"
+              onClick={handleSyncVapi}
+              disabled={syncing}
+              data-testid="button-sync-vapi"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing…' : campaign.vapiAssistantId ? 'Re-sync Agent' : 'Create Agent in VAPI'}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              Make sure your VAPI API key is saved in{' '}
+              <a href="/integrations" className="underline hover:text-foreground">Integrations</a>{' '}
+              before syncing. The phone number must also be registered there.
+            </p>
           </div>
 
           <div className="flex justify-end">

@@ -114,17 +114,25 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
   const resolvedTwilioToken = campaign.twilioAuthToken || user?.twilioAuthToken;
   const resolvedTwilioPhone = campaign.twilioPhoneNumber || user?.twilioPhoneNumber;
 
-  if (resolvedVapiKey && resolvedTwilioSid && resolvedTwilioToken && resolvedTwilioPhone) {
+  // Resolve persistent VAPI object IDs (preferred path)
+  const assistantId = campaign.vapiAssistantId ?? undefined;
+  const phoneNumberId = user?.vapiPhoneNumberId ?? undefined;
+
+  // Build webhook URL correctly for both dev and production
+  const replitDomains = process.env.REPLIT_DOMAINS;
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  const webhookHost = replitDomains
+    ? `https://${replitDomains.split(",")[0].trim()}`
+    : devDomain
+      ? `https://${devDomain}`
+      : (process.env.API_BASE_URL ?? "");
+  const webhookUrl = `${webhookHost}/api/webhooks/vapi`;
+
+  if (resolvedVapiKey && (assistantId || (resolvedTwilioSid && resolvedTwilioToken && resolvedTwilioPhone))) {
     const pendingLeads = await db
       .select()
       .from(leadsTable)
       .where(and(eq(leadsTable.campaignId, id), eq(leadsTable.status, "pending")));
-
-    // Build the webhook URL for VAPI to call back with call events
-    const host = process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : (process.env.API_BASE_URL ?? "");
-    const webhookUrl = `${host}/api/webhooks/vapi`;
 
     for (const lead of pendingLeads) {
       try {
@@ -141,13 +149,17 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
 
         const { callId } = await initiateVapiCall({
           vapiApiKey: resolvedVapiKey,
-          twilioAccountSid: resolvedTwilioSid,
-          twilioAuthToken: resolvedTwilioToken,
-          twilioPhoneNumber: resolvedTwilioPhone,
           toNumber: lead.phone,
           customerName: lead.name,
           systemPrompt,
           webhookUrl,
+          // Preferred: persistent VAPI objects
+          assistantId,
+          phoneNumberId,
+          // Fallback: inline Twilio BYOT
+          twilioAccountSid: resolvedTwilioSid ?? undefined,
+          twilioAuthToken: resolvedTwilioToken ?? undefined,
+          twilioPhoneNumber: resolvedTwilioPhone ?? undefined,
         });
 
         // Create a call log entry linked to the VAPI call ID

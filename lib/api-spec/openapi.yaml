@@ -630,6 +630,12 @@ components:
           type: ["string", "null"]
         vapiApiKey:
           type: ["string", "null"]
+        vapiAssistantId:
+          type: ["string", "null"]
+        totalLeads:
+          type: number
+        calledLeads:
+          type: number
         createdAt:
           type: string
           format: date-time

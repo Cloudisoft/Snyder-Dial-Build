@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, ExternalLink, KeyRound, Phone } from 'lucide-react';
+import { CheckCircle2, ExternalLink, KeyRound, Phone, RefreshCw } from 'lucide-react';
 import { getToken } from '@/lib/auth';
 
 interface IntegrationSettings {
@@ -13,6 +13,7 @@ interface IntegrationSettings {
   twilioAuthTokenSet: boolean;
   twilioAuthToken: string | null;
   twilioPhoneNumber: string | null;
+  vapiPhoneNumberId: string | null;
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -39,6 +40,7 @@ export default function Integrations() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [registeringPhone, setRegisteringPhone] = useState(false);
   const [settings, setSettings] = useState<IntegrationSettings | null>(null);
 
   const [vapiApiKey, setVapiApiKey] = useState('');
@@ -56,6 +58,27 @@ export default function Integrations() {
       .catch(() => toast({ title: 'Failed to load settings', variant: 'destructive' }))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleRegisterPhone = async () => {
+    setRegisteringPhone(true);
+    try {
+      const res = await fetch(`${BASE}/api/settings/integrations/register-phone`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Registration failed');
+      setSettings((s) => s ? { ...s, vapiPhoneNumberId: data.phoneNumberId } : s);
+      toast({
+        title: data.reused ? 'Phone number already registered' : 'Phone number registered with VAPI',
+        description: `VAPI Phone ID: ${data.phoneNumberId}`,
+      });
+    } catch (err: unknown) {
+      toast({ title: 'Registration failed', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    } finally {
+      setRegisteringPhone(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -215,6 +238,40 @@ export default function Integrations() {
               A Twilio number in E.164 format. Calls will show this as the caller ID.
               Get one at <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/incoming" target="_blank" rel="noopener noreferrer" className="underline">Twilio Phone Numbers</a>.
             </p>
+          </div>
+        </div>
+
+        {/* Register phone with VAPI */}
+        <div className="mt-5 pt-5 border-t border-card-border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Register with VAPI</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Links your Twilio number to VAPI so calls use a persistent phone number ID.
+                Required for reliable outbound calls.
+              </p>
+              {settings?.vapiPhoneNumberId && (
+                <p className="text-xs font-mono text-muted-foreground mt-1 bg-muted px-2 py-1 rounded inline-block">
+                  Phone ID: {settings.vapiPhoneNumberId}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 ml-4 shrink-0">
+              {settings?.vapiPhoneNumberId && (
+                <span className="flex items-center gap-1.5 text-xs text-chart-5 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Registered
+                </span>
+              )}
+              <Button
+                variant={settings?.vapiPhoneNumberId ? 'outline' : 'default'}
+                size="sm"
+                onClick={handleRegisterPhone}
+                disabled={registeringPhone || !settings?.twilioAccountSid || !settings?.twilioAuthTokenSet || !settings?.twilioPhoneNumber || !settings?.vapiApiKeySet}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${registeringPhone ? 'animate-spin' : ''}`} />
+                {registeringPhone ? 'Registering…' : settings?.vapiPhoneNumberId ? 'Re-register' : 'Register Phone with VAPI'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

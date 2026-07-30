@@ -16,6 +16,7 @@ router.get("/settings/integrations", requireAuth, async (req, res): Promise<void
     twilioAuthToken: user.twilioAuthToken ? "••••••••" + user.twilioAuthToken.slice(-4) : null,
     twilioAuthTokenSet: !!user.twilioAuthToken,
     twilioPhoneNumber: user.twilioPhoneNumber ?? null,
+    vapiPhoneNumberId: user.vapiPhoneNumberId ?? null,
   });
 });
 
@@ -27,7 +28,13 @@ router.patch("/settings/integrations", requireAuth, async (req, res): Promise<vo
   if (vapiApiKey !== undefined) updates.vapiApiKey = vapiApiKey || null;
   if (twilioAccountSid !== undefined) updates.twilioAccountSid = twilioAccountSid || null;
   if (twilioAuthToken !== undefined) updates.twilioAuthToken = twilioAuthToken || null;
-  if (twilioPhoneNumber !== undefined) updates.twilioPhoneNumber = twilioPhoneNumber || null;
+  if (twilioPhoneNumber !== undefined) {
+    updates.twilioPhoneNumber = twilioPhoneNumber || null;
+    // Clear the cached phone number ID when the phone number changes
+    if (twilioPhoneNumber !== (await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)))[0]?.twilioPhoneNumber) {
+      updates.vapiPhoneNumberId = null;
+    }
+  }
 
   const [user] = await db
     .update(usersTable)
@@ -42,6 +49,7 @@ router.patch("/settings/integrations", requireAuth, async (req, res): Promise<vo
     twilioAuthToken: user.twilioAuthToken ? "••••••••" + user.twilioAuthToken.slice(-4) : null,
     twilioAuthTokenSet: !!user.twilioAuthToken,
     twilioPhoneNumber: user.twilioPhoneNumber ?? null,
+    vapiPhoneNumberId: user.vapiPhoneNumberId ?? null,
   });
 });
 

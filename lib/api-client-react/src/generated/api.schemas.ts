@@ -86,6 +86,10 @@ export interface Campaign {
   twilioPhoneNumber?: string | null;
   /** @nullable */
   vapiApiKey?: string | null;
+  /** @nullable */
+  vapiAssistantId?: string | null;
+  totalLeads?: number;
+  calledLeads?: number;
   createdAt: string;
   updatedAt: string;
 }
