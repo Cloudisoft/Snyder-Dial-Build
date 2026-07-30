@@ -28,7 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText } from 'lucide-react';
+import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function CampaignDetail() {
@@ -70,7 +70,17 @@ export default function CampaignDetail() {
     setVapiApiKey(campaign.vapiApiKey || '');
   }
 
+  const credentialsMissing = !campaign?.vapiApiKey || !campaign?.twilioAccountSid || !campaign?.twilioAuthToken || !campaign?.twilioPhoneNumber;
+
   const handleLaunch = () => {
+    if (credentialsMissing) {
+      toast({
+        title: 'Credentials required',
+        description: 'Please fill in your VAPI API Key and Twilio credentials in the Settings tab before launching.',
+        variant: 'destructive',
+      });
+      return;
+    }
     launchCampaign.mutate(
       { id: campaignId },
       {
@@ -262,10 +272,36 @@ export default function CampaignDetail() {
           <TabsTrigger value="leads" data-testid="tab-leads">Leads</TabsTrigger>
           <TabsTrigger value="knowledge" data-testid="tab-knowledge">Knowledge Base</TabsTrigger>
           <TabsTrigger value="calls" data-testid="tab-calls">Calls</TabsTrigger>
-          <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
+          <TabsTrigger value="settings" data-testid="tab-settings" className="relative">
+            Settings
+            {credentialsMissing && (
+              <span className="ml-1.5 inline-flex items-center justify-center w-2 h-2 rounded-full bg-destructive" />
+            )}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {credentialsMissing && (
+            <div className="flex items-start gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-destructive text-sm">Credentials not configured</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Add your VAPI API Key and Twilio credentials in the{' '}
+                  <button
+                    className="underline text-foreground"
+                    onClick={() => {
+                      const el = document.querySelector('[data-testid="tab-settings"]') as HTMLButtonElement;
+                      el?.click();
+                    }}
+                  >
+                    Settings tab
+                  </button>{' '}
+                  before launching this campaign.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {stats && (
               <>
@@ -520,7 +556,17 @@ export default function CampaignDetail() {
           </div>
 
           <div className="bg-card border border-card-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">Twilio Configuration</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Twilio Configuration</h2>
+              <a
+                href="https://console.twilio.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                Get credentials <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
             <div className="space-y-4">
               <div>
                 <Label htmlFor="twilioAccountSid">Account SID</Label>
@@ -529,8 +575,10 @@ export default function CampaignDetail() {
                   value={twilioAccountSid}
                   onChange={(e) => setTwilioAccountSid(e.target.value)}
                   className="mt-1.5 font-mono"
+                  placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                   data-testid="input-twilio-sid"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Found on your Twilio Console dashboard</p>
               </div>
               <div>
                 <Label htmlFor="twilioAuthToken">Auth Token</Label>
@@ -540,35 +588,55 @@ export default function CampaignDetail() {
                   value={twilioAuthToken}
                   onChange={(e) => setTwilioAuthToken(e.target.value)}
                   className="mt-1.5 font-mono"
+                  placeholder="••••••••••••••••••••••••••••••••"
                   data-testid="input-twilio-token"
                 />
+                <p className="text-xs text-muted-foreground mt-1">Found alongside your Account SID on the Twilio Console</p>
               </div>
               <div>
-                <Label htmlFor="twilioPhoneNumber">Phone Number</Label>
+                <Label htmlFor="twilioPhoneNumber">Outbound Phone Number</Label>
                 <Input
                   id="twilioPhoneNumber"
                   value={twilioPhoneNumber}
                   onChange={(e) => setTwilioPhoneNumber(e.target.value)}
                   className="mt-1.5 font-mono"
-                  placeholder="+1234567890"
+                  placeholder="+15551234567"
                   data-testid="input-twilio-phone"
                 />
+                <p className="text-xs text-muted-foreground mt-1">A Twilio number in E.164 format (e.g. +15551234567). Calls will display this caller ID.</p>
               </div>
             </div>
           </div>
 
           <div className="bg-card border border-card-border rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-4">VAPI Configuration</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">VAPI Configuration</h2>
+              <a
+                href="https://dashboard.vapi.ai/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                Get API Key <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
             <div>
-              <Label htmlFor="vapiApiKey">API Key</Label>
+              <Label htmlFor="vapiApiKey">Private API Key</Label>
               <Input
                 id="vapiApiKey"
                 type="password"
                 value={vapiApiKey}
                 onChange={(e) => setVapiApiKey(e.target.value)}
                 className="mt-1.5 font-mono"
+                placeholder="••••••••••••••••••••••••••••••••"
                 data-testid="input-vapi-key"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                Your VAPI Private API Key from{' '}
+                <a href="https://dashboard.vapi.ai/keys" target="_blank" rel="noopener noreferrer" className="underline">
+                  dashboard.vapi.ai/keys
+                </a>. VAPI handles the AI voice conversation; Twilio handles the phone call.
+              </p>
             </div>
           </div>
 
