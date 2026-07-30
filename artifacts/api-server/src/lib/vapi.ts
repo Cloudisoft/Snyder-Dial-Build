@@ -207,6 +207,8 @@ export async function initiateVapiCall(opts: VapiCallOptions): Promise<VapiCallR
       // Override the system prompt per-call so lead variables are interpolated
       assistantOverrides: {
         model: {
+          provider: "openai",
+          model: "gpt-4o-mini",
           messages: [{ role: "system", content: interpolatedPrompt }],
         },
       },
