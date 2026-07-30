@@ -26,6 +26,19 @@ export async function runStartupMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS recording_url text
   `);
 
+  // VAPI sync columns added in the VAPI integration work
+  await db.execute(sql`
+    ALTER TABLE campaigns
+      ADD COLUMN IF NOT EXISTS vapi_assistant_id text
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS vapi_phone_number_id text,
+      ADD COLUMN IF NOT EXISTS twilio_api_key      text,
+      ADD COLUMN IF NOT EXISTS twilio_api_secret   text
+  `);
+
   // 2. Reconcile counters for every campaign from source-of-truth tables.
   //    Runs unconditionally so drift (stale non-zero values) is also repaired.
   await db.execute(sql`
