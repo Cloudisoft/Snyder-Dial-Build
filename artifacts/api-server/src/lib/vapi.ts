@@ -35,6 +35,8 @@ export interface RegisterPhoneNumberOptions {
   vapiApiKey: string;
   twilioAccountSid: string;
   twilioAuthToken: string;
+  twilioApiKey: string;
+  twilioApiSecret: string;
   twilioPhoneNumber: string;
   name?: string;
 }
@@ -86,8 +88,8 @@ export async function createVapiAssistant(opts: CreateAssistantOptions): Promise
       messages: [{ role: "system", content: opts.systemPrompt }],
     },
     voice: {
-      provider: "playht",
-      voiceId: "jennifer",
+      provider: "openai",
+      voiceId: "nova",
     },
     server: {
       url: opts.webhookUrl,
@@ -126,24 +128,28 @@ async function ensureVapiTwilioCredential(
   vapiApiKey: string,
   twilioAccountSid: string,
   twilioAuthToken: string,
+  twilioApiKey: string,
+  twilioApiSecret: string,
 ): Promise<string> {
-  // List existing credentials and reuse if already present
+  // List existing credentials and reuse if already present for this account SID
   const res = await fetch("https://api.vapi.ai/credential", {
     headers: { Authorization: `Bearer ${vapiApiKey}` },
   });
   if (res.ok) {
-    const creds = await res.json() as Array<{ id: string; provider: string; twilioAccountSid?: string }>;
+    const creds = await res.json() as Array<{ id: string; provider: string; accountSid?: string }>;
     const existing = creds.find(
-      (c) => c.provider === "twilio" && c.twilioAccountSid === twilioAccountSid,
+      (c) => c.provider === "twilio" && c.accountSid === twilioAccountSid,
     );
     if (existing) return existing.id;
   }
 
-  // Create a new Twilio credential
+  // Create a new Twilio credential — VAPI uses accountSid/authToken/apiKey/apiSecret (no "twilio" prefix)
   const data = await vapiRequest("/credential", vapiApiKey, "POST", {
     provider: "twilio",
-    twilioAccountSid,
-    twilioAuthToken,
+    accountSid: twilioAccountSid,
+    authToken: twilioAuthToken,
+    apiKey: twilioApiKey,
+    apiSecret: twilioApiSecret,
   });
   return data.id as string;
 }
@@ -165,6 +171,8 @@ export async function registerVapiPhoneNumber(opts: RegisterPhoneNumberOptions):
     opts.vapiApiKey,
     opts.twilioAccountSid,
     opts.twilioAuthToken,
+    opts.twilioApiKey,
+    opts.twilioApiSecret,
   );
 
   // Register the phone number using the credential UUID
@@ -241,8 +249,8 @@ export async function initiateVapiCall(opts: VapiCallOptions): Promise<VapiCallR
           messages: [{ role: "system", content: interpolatedPrompt }],
         },
         voice: {
-          provider: "playht",
-          voiceId: "jennifer",
+          provider: "openai",
+          voiceId: "nova",
         },
         server: {
           url: opts.webhookUrl,

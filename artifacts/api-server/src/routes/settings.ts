@@ -16,22 +16,29 @@ router.get("/settings/integrations", requireAuth, async (req, res): Promise<void
     twilioAuthToken: user.twilioAuthToken ? "••••••••" + user.twilioAuthToken.slice(-4) : null,
     twilioAuthTokenSet: !!user.twilioAuthToken,
     twilioPhoneNumber: user.twilioPhoneNumber ?? null,
+    twilioApiKey: user.twilioApiKey ?? null,
+    twilioApiKeySet: !!user.twilioApiKey,
+    twilioApiSecret: user.twilioApiSecret ? "••••••••" + user.twilioApiSecret.slice(-4) : null,
+    twilioApiSecretSet: !!user.twilioApiSecret,
     vapiPhoneNumberId: user.vapiPhoneNumberId ?? null,
   });
 });
 
 router.patch("/settings/integrations", requireAuth, async (req, res): Promise<void> => {
-  const { vapiApiKey, twilioAccountSid, twilioAuthToken, twilioPhoneNumber } = req.body;
+  const { vapiApiKey, twilioAccountSid, twilioAuthToken, twilioPhoneNumber, twilioApiKey, twilioApiSecret } = req.body;
   const updates: Record<string, unknown> = {};
 
   // Only update fields that were explicitly sent (non-undefined)
   if (vapiApiKey !== undefined) updates.vapiApiKey = vapiApiKey || null;
   if (twilioAccountSid !== undefined) updates.twilioAccountSid = twilioAccountSid || null;
   if (twilioAuthToken !== undefined) updates.twilioAuthToken = twilioAuthToken || null;
+  if (twilioApiKey !== undefined) updates.twilioApiKey = twilioApiKey || null;
+  if (twilioApiSecret !== undefined) updates.twilioApiSecret = twilioApiSecret || null;
   if (twilioPhoneNumber !== undefined) {
     updates.twilioPhoneNumber = twilioPhoneNumber || null;
-    // Clear the cached phone number ID when the phone number changes
-    if (twilioPhoneNumber !== (await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId)))[0]?.twilioPhoneNumber) {
+    // Clear the cached VAPI phone number ID when the Twilio number changes
+    const [current] = await db.select().from(usersTable).where(eq(usersTable.id, req.auth!.userId));
+    if (twilioPhoneNumber !== current?.twilioPhoneNumber) {
       updates.vapiPhoneNumberId = null;
     }
   }
@@ -49,6 +56,10 @@ router.patch("/settings/integrations", requireAuth, async (req, res): Promise<vo
     twilioAuthToken: user.twilioAuthToken ? "••••••••" + user.twilioAuthToken.slice(-4) : null,
     twilioAuthTokenSet: !!user.twilioAuthToken,
     twilioPhoneNumber: user.twilioPhoneNumber ?? null,
+    twilioApiKey: user.twilioApiKey ?? null,
+    twilioApiKeySet: !!user.twilioApiKey,
+    twilioApiSecret: user.twilioApiSecret ? "••••••••" + user.twilioApiSecret.slice(-4) : null,
+    twilioApiSecretSet: !!user.twilioApiSecret,
     vapiPhoneNumberId: user.vapiPhoneNumberId ?? null,
   });
 });

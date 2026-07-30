@@ -103,9 +103,14 @@ router.post("/settings/integrations/register-phone", requireAuth, async (req, re
   const twilioSid = user.twilioAccountSid;
   const twilioToken = user.twilioAuthToken;
   const twilioPhone = user.twilioPhoneNumber;
+  const twilioApiKey = user.twilioApiKey;
+  const twilioApiSecret = user.twilioApiSecret;
 
   if (!vapiKey || !twilioSid || !twilioToken || !twilioPhone) {
     res.status(400).json({ error: "Save your VAPI key and all Twilio credentials first." }); return;
+  }
+  if (!twilioApiKey || !twilioApiSecret) {
+    res.status(400).json({ error: "Twilio API Key SID and API Key Secret are required for VAPI registration. Create them at console.twilio.com → Account → API Keys." }); return;
   }
 
   try {
@@ -122,6 +127,8 @@ router.post("/settings/integrations/register-phone", requireAuth, async (req, re
         vapiApiKey: vapiKey,
         twilioAccountSid: twilioSid,
         twilioAuthToken: twilioToken,
+        twilioApiKey,
+        twilioApiSecret,
         twilioPhoneNumber: twilioPhone,
         name: "Snyder Dialer",
       });

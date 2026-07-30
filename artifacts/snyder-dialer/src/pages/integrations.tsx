@@ -13,6 +13,10 @@ interface IntegrationSettings {
   twilioAuthTokenSet: boolean;
   twilioAuthToken: string | null;
   twilioPhoneNumber: string | null;
+  twilioApiKey: string | null;
+  twilioApiKeySet: boolean;
+  twilioApiSecretSet: boolean;
+  twilioApiSecret: string | null;
   vapiPhoneNumberId: string | null;
 }
 
@@ -47,6 +51,8 @@ export default function Integrations() {
   const [twilioAccountSid, setTwilioAccountSid] = useState('');
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('');
+  const [twilioApiKey, setTwilioApiKey] = useState('');
+  const [twilioApiSecret, setTwilioApiSecret] = useState('');
 
   useEffect(() => {
     fetchSettings()
@@ -90,11 +96,15 @@ export default function Integrations() {
       // Only send secrets if user typed something new
       if (vapiApiKey) payload.vapiApiKey = vapiApiKey;
       if (twilioAuthToken) payload.twilioAuthToken = twilioAuthToken;
+      if (twilioApiKey) payload.twilioApiKey = twilioApiKey;
+      if (twilioApiSecret) payload.twilioApiSecret = twilioApiSecret;
 
       const updated = await saveSettings(payload);
       setSettings(updated);
       setVapiApiKey('');
       setTwilioAuthToken('');
+      setTwilioApiKey('');
+      setTwilioApiSecret('');
       toast({ title: 'Credentials saved' });
     } catch {
       toast({ title: 'Failed to save', variant: 'destructive' });
@@ -225,6 +235,41 @@ export default function Integrations() {
             <p className="text-xs text-muted-foreground mt-1">Found next to your Account SID on the Twilio Console.</p>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="twilioApiKey">
+                API Key SID{settings?.twilioApiKeySet && <span className="ml-2 text-xs text-muted-foreground font-normal">(saved)</span>}
+              </Label>
+              <Input
+                id="twilioApiKey"
+                value={twilioApiKey}
+                onChange={(e) => setTwilioApiKey(e.target.value)}
+                className="mt-1.5 font-mono"
+                placeholder={settings?.twilioApiKey ?? 'SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}
+              />
+            </div>
+            <div>
+              <Label htmlFor="twilioApiSecret">
+                API Key Secret{settings?.twilioApiSecretSet && <span className="ml-2 text-xs text-muted-foreground font-normal">(saved)</span>}
+              </Label>
+              <Input
+                id="twilioApiSecret"
+                type="password"
+                value={twilioApiSecret}
+                onChange={(e) => setTwilioApiSecret(e.target.value)}
+                className="mt-1.5 font-mono"
+                placeholder={settings?.twilioApiSecretSet ? settings.twilioApiSecret ?? '••••••••' : 'Your API Key Secret'}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Required by VAPI for phone registration. Create API Keys at{' '}
+            <a href="https://console.twilio.com/us1/account/manage-keys/api-key-list" target="_blank" rel="noopener noreferrer" className="underline">
+              Twilio Console → API Keys &amp; Tokens
+            </a>.
+            Copy both the SID (SK…) and the Secret immediately — Twilio only shows the secret once.
+          </p>
+
           <div>
             <Label htmlFor="twilioPhoneNumber">Outbound Phone Number</Label>
             <Input
@@ -266,7 +311,7 @@ export default function Integrations() {
                 variant={settings?.vapiPhoneNumberId ? 'outline' : 'default'}
                 size="sm"
                 onClick={handleRegisterPhone}
-                disabled={registeringPhone || !settings?.twilioAccountSid || !settings?.twilioAuthTokenSet || !settings?.twilioPhoneNumber || !settings?.vapiApiKeySet}
+                disabled={registeringPhone || !settings?.twilioAccountSid || !settings?.twilioAuthTokenSet || !settings?.twilioPhoneNumber || !settings?.vapiApiKeySet || !settings?.twilioApiKeySet || !settings?.twilioApiSecretSet}
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${registeringPhone ? 'animate-spin' : ''}`} />
                 {registeringPhone ? 'Registering…' : settings?.vapiPhoneNumberId ? 'Re-register' : 'Register Phone with VAPI'}
