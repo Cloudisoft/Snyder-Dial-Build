@@ -601,14 +601,30 @@ export default function CampaignDetail() {
           <div className="bg-card border border-card-border rounded-lg p-6">
             <h2 className="text-lg font-semibold mb-4">Master AI Prompt</h2>
             <div className="space-y-4">
-              <div className="flex gap-2 mb-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => insertVariable('first_name')}
+                  data-testid="button-insert-first-name"
+                >
+                  {'{{first_name}}'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => insertVariable('last_name')}
+                  data-testid="button-insert-last-name"
+                >
+                  {'{{last_name}}'}
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => insertVariable('name')}
                   data-testid="button-insert-name"
                 >
-                  Insert {'{{'} name {'}}'}
+                  {'{{name}}'}
                 </Button>
                 <Button
                   variant="outline"
@@ -616,7 +632,7 @@ export default function CampaignDetail() {
                   onClick={() => insertVariable('company')}
                   data-testid="button-insert-company"
                 >
-                  Insert {'{{'} company {'}}'}
+                  {'{{company}}'}
                 </Button>
                 <Button
                   variant="outline"
@@ -624,7 +640,7 @@ export default function CampaignDetail() {
                   onClick={() => insertVariable('phone')}
                   data-testid="button-insert-phone"
                 >
-                  Insert {'{{'} phone {'}}'}
+                  {'{{phone}}'}
                 </Button>
                 <Button
                   variant="outline"
@@ -632,7 +648,7 @@ export default function CampaignDetail() {
                   onClick={() => insertVariable('notes')}
                   data-testid="button-insert-notes"
                 >
-                  Insert {'{{'} notes {'}}'}
+                  {'{{notes}}'}
                 </Button>
               </div>
               <Textarea

@@ -211,13 +211,19 @@ export async function initiateVapiCall(opts: VapiCallOptions): Promise<VapiCallR
 
   if (opts.assistantId && opts.phoneNumberId) {
     // ── Preferred path: persistent VAPI assistant + registered phone number ──
+    const firstName = opts.customerName ? opts.customerName.trim().split(/\s+/)[0] : null;
+    const firstMessage = firstName
+      ? `Hi ${firstName}, this is Zack from Snyder Staffing — how are you doing today?`
+      : "Hi, this is Zack from Snyder Staffing — how are you doing today?";
+
     body = {
       type: "outboundPhoneCall",
       assistantId: opts.assistantId,
-      // Override the system prompt per-call so lead variables are interpolated.
+      // Override first message and system prompt per-call with lead-specific values.
       // provider + model must be included because VAPI shallow-merges nested objects —
       // specifying only `messages` would cause provider/model-name to be lost.
       assistantOverrides: {
+        firstMessage,
         model: {
           provider: "openai",
           model: "gpt-4o-mini",

@@ -31,8 +31,15 @@ async function dialLeadIfActive(campaignId: number, leadId: number, userId: numb
 
   try {
     await db.update(leadsTable).set({ status: "calling" }).where(eq(leadsTable.id, leadId));
+    const nameParts = (lead.name ?? "").trim().split(/\s+/);
     const systemPrompt = interpolatePrompt(campaign.masterPrompt, {
-      name: lead.name, company: lead.company, phone: lead.phone, email: lead.email, notes: lead.notes,
+      name: lead.name,
+      first_name: nameParts[0] ?? "",
+      last_name: nameParts.slice(1).join(" ") || "",
+      company: lead.company,
+      phone: lead.phone,
+      email: lead.email,
+      notes: lead.notes,
     });
     const { callId } = await initiateVapiCall({
       vapiApiKey: vapiKey,

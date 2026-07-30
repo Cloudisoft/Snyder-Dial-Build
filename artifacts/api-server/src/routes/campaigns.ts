@@ -139,8 +139,11 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
         // Mark lead as "calling" so it isn't re-dialed by a subsequent launch
         await db.update(leadsTable).set({ status: "calling" }).where(eq(leadsTable.id, lead.id));
 
+        const nameParts = (lead.name ?? "").trim().split(/\s+/);
         const systemPrompt = interpolatePrompt(campaign.masterPrompt, {
           name: lead.name,
+          first_name: nameParts[0] ?? "",
+          last_name: nameParts.slice(1).join(" ") || "",
           company: lead.company,
           phone: lead.phone,
           email: lead.email,
