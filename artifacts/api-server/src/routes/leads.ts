@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import multer from "multer";
 import { parse } from "csv-parse/sync";
 import { db, leadsTable, activityLogTable, campaignsTable } from "@workspace/db";
@@ -61,6 +61,12 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
       campaignId,
       campaignName: campaign.name,
     });
+    if (imported > 0) {
+      await db
+        .update(campaignsTable)
+        .set({ totalLeads: sql`${campaignsTable.totalLeads} + ${imported}` })
+        .where(eq(campaignsTable.id, campaignId));
+    }
   }
 
   res.json({ imported, skipped, total: records.length });
@@ -71,7 +77,15 @@ router.delete("/leads/:id", requireAuth, async (req, res): Promise<void> => {
   const id = parseInt(raw, 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
+  // Fetch before deleting so we can keep totalLeads accurate
+  const [lead] = await db.select({ campaignId: leadsTable.campaignId }).from(leadsTable).where(eq(leadsTable.id, id));
   await db.delete(leadsTable).where(eq(leadsTable.id, id));
+  if (lead?.campaignId) {
+    await db
+      .update(campaignsTable)
+      .set({ totalLeads: sql`greatest(${campaignsTable.totalLeads} - 1, 0)` })
+      .where(eq(campaignsTable.id, lead.campaignId));
+  }
   res.sendStatus(204);
 });
 

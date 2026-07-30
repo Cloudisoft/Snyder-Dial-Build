@@ -10,8 +10,8 @@
  */
 
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, callLogsTable, leadsTable } from "@workspace/db";
+import { and, eq, notInArray, sql } from "drizzle-orm";
+import { db, callLogsTable, leadsTable, campaignsTable } from "@workspace/db";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -92,7 +92,11 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
       const outcome: string | null =
         message?.summary ?? message?.analysis?.summary ?? null;
 
-      // Update call log
+      // Terminal states — a second webhook for the same call must not re-increment counters
+      const TERMINAL_STATUSES = ["completed", "failed", "no_answer", "voicemail"] as const;
+
+      // Update call log only if it hasn't already reached a terminal state.
+      // If the row is already terminal this returns no rows, making the handler idempotent.
       const [updatedCall] = await db
         .update(callLogsTable)
         .set({
@@ -102,23 +106,41 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           outcome: outcome ?? undefined,
           endedAt: new Date(),
         })
-        .where(eq(callLogsTable.vapiCallId, callId))
+        .where(
+          and(
+            eq(callLogsTable.vapiCallId, callId),
+            notInArray(callLogsTable.status, [...TERMINAL_STATUSES]),
+          )
+        )
         .returning();
 
-      // Update lead status
+      // Update lead status and increment campaign calledLeads counter
       if (updatedCall?.leadId) {
         await db
           .update(leadsTable)
           .set({ status: callStatusToLeadStatus(callStatus) })
           .where(eq(leadsTable.id, updatedCall.leadId));
       }
+      if (updatedCall?.campaignId) {
+        await db
+          .update(campaignsTable)
+          .set({ calledLeads: sql`${campaignsTable.calledLeads} + 1` })
+          .where(eq(campaignsTable.id, updatedCall.campaignId));
+      }
 
     } else if (eventType === "hang") {
-      // Call was hung up unexpectedly
+      // Call was hung up unexpectedly — same idempotency guard as call-ended
+      const TERMINAL_STATUSES = ["completed", "failed", "no_answer", "voicemail"] as const;
+
       const [updatedCall] = await db
         .update(callLogsTable)
         .set({ status: "failed", endedAt: new Date() })
-        .where(eq(callLogsTable.vapiCallId, callId))
+        .where(
+          and(
+            eq(callLogsTable.vapiCallId, callId),
+            notInArray(callLogsTable.status, [...TERMINAL_STATUSES]),
+          )
+        )
         .returning();
 
       if (updatedCall?.leadId) {
@@ -126,6 +148,12 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           .update(leadsTable)
           .set({ status: "failed" })
           .where(eq(leadsTable.id, updatedCall.leadId));
+      }
+      if (updatedCall?.campaignId) {
+        await db
+          .update(campaignsTable)
+          .set({ calledLeads: sql`${campaignsTable.calledLeads} + 1` })
+          .where(eq(campaignsTable.id, updatedCall.campaignId));
       }
     }
 

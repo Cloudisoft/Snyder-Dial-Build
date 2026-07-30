@@ -1,11 +1,29 @@
-import { useGetDashboardStats, useGetDashboardActivity } from '@workspace/api-client-react';
+import { useGetDashboardStats, useGetDashboardActivity, getGetDashboardStatsQueryKey, getGetDashboardActivityQueryKey } from '@workspace/api-client-react';
 import { StatCard } from '@/components/ui/stat-card';
 import { Megaphone, Users, Phone, CheckCircle2, Clock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Dashboard() {
-  const { data: stats, isLoading: statsLoading } = useGetDashboardStats();
-  const { data: activity, isLoading: activityLoading } = useGetDashboardActivity();
+  const { data: stats, isLoading: statsLoading } = useGetDashboardStats({
+    query: {
+      queryKey: getGetDashboardStatsQueryKey(),
+      // Poll every 30s while at least one campaign is active
+      refetchInterval: (query) => {
+        const data = query.state.data;
+        return data && data.activeCampaigns > 0 ? 30_000 : false;
+      },
+    },
+  });
+
+  const hasActiveCampaigns = (stats?.activeCampaigns ?? 0) > 0;
+
+  const { data: activity, isLoading: activityLoading } = useGetDashboardActivity({
+    query: {
+      queryKey: getGetDashboardActivityQueryKey(),
+      // Mirror stats polling interval so activity feed stays in sync
+      refetchInterval: hasActiveCampaigns ? 30_000 : false,
+    },
+  });
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
