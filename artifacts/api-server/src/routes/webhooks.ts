@@ -92,17 +92,26 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
       const outcome: string | null =
         message?.summary ?? message?.analysis?.summary ?? null;
 
-      // Terminal states — a second webhook for the same call must not re-increment counters
+      // Recording URL — VAPI provides this on call-ended / end-of-call-report
+      const recordingUrl: string | null =
+        message?.call?.recordingUrl ??
+        message?.recordingUrl ??
+        message?.artifact?.recordingUrl ??
+        null;
+
+      // Terminal states — counters must only increment once per call.
       const TERMINAL_STATUSES = ["completed", "failed", "no_answer", "voicemail"] as const;
 
-      // Update call log only if it hasn't already reached a terminal state.
-      // If the row is already terminal this returns no rows, making the handler idempotent.
+      // Step 1: Transition from non-terminal → terminal.
+      // This sets status, increments counters, and writes all enrichment fields.
+      // Returns the updated row only when the transition actually happened.
       const [updatedCall] = await db
         .update(callLogsTable)
         .set({
           status: callStatus,
           duration: duration ?? undefined,
           transcript: transcript ?? undefined,
+          recordingUrl: recordingUrl ?? undefined,
           outcome: outcome ?? undefined,
           endedAt: new Date(),
         })
@@ -114,7 +123,7 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
         )
         .returning();
 
-      // Update lead status and increment campaign calledLeads counter
+      // Update lead status and increment campaign calledLeads counter (first event only).
       if (updatedCall?.leadId) {
         await db
           .update(leadsTable)
@@ -126,6 +135,22 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           .update(campaignsTable)
           .set({ calledLeads: sql`${campaignsTable.calledLeads} + 1` })
           .where(eq(campaignsTable.id, updatedCall.campaignId));
+      }
+
+      // Step 2: If the call was already terminal (updatedCall is undefined), a follow-up
+      // event like end-of-call-report may still carry richer data.  Use COALESCE per
+      // column so each field is only written when it is currently NULL — first value wins,
+      // no already-populated field is ever overwritten.
+      if (!updatedCall) {
+        await db
+          .update(callLogsTable)
+          .set({
+            transcript:   sql`COALESCE(${callLogsTable.transcript},   ${transcript})`,
+            recordingUrl: sql`COALESCE(${callLogsTable.recordingUrl}, ${recordingUrl})`,
+            outcome:      sql`COALESCE(${callLogsTable.outcome},      ${outcome})`,
+            duration:     sql`COALESCE(${callLogsTable.duration},     ${duration})`,
+          })
+          .where(eq(callLogsTable.vapiCallId, callId));
       }
 
     } else if (eventType === "hang") {

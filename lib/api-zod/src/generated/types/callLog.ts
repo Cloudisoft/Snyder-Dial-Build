@@ -21,6 +21,8 @@ export interface CallLog {
   /** @nullable */
   transcript?: string | null;
   /** @nullable */
+  recordingUrl?: string | null;
+  /** @nullable */
   outcome?: string | null;
   /** @nullable */
   startedAt?: Date | null;

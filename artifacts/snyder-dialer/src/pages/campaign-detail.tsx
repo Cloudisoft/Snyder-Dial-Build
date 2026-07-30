@@ -29,10 +29,9 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus } from 'lucide-react';
+import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus, ChevronDown, ChevronRight, Clock, MessageSquare, Mic } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { getToken } from '@/lib/auth';
-
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export default function CampaignDetail() {
@@ -374,15 +373,7 @@ export default function CampaignDetail() {
             <div className="divide-y divide-card-border">
               {calls && calls.length > 0 ? (
                 calls.slice(0, 5).map((call) => (
-                  <div key={call.id} className="px-6 py-4" data-testid={`call-${call.id}`}>
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{call.leadName}</p>
-                        <p className="text-sm text-muted-foreground">{call.leadPhone}</p>
-                      </div>
-                      <Badge variant="outline">{call.status}</Badge>
-                    </div>
-                  </div>
+                  <CallRow key={call.id} call={call} data-testid={`call-${call.id}`} />
                 ))
               ) : (
                 <div className="px-6 py-12 text-center text-muted-foreground">No calls yet</div>
@@ -569,34 +560,12 @@ export default function CampaignDetail() {
           <div className="bg-card border border-card-border rounded-lg">
             <div className="px-6 py-4 border-b border-card-border">
               <h2 className="text-lg font-semibold">Call History</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">Click a row to expand the transcript</p>
             </div>
             <div className="divide-y divide-card-border">
               {calls && calls.length > 0 ? (
                 calls.map((call) => (
-                  <div key={call.id} className="px-6 py-4" data-testid={`call-detail-${call.id}`}>
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-medium">{call.leadName}</p>
-                        <p className="text-sm text-muted-foreground font-mono">{call.leadPhone}</p>
-                      </div>
-                      <div className="text-right">
-                        <Badge variant="outline" className="mb-2">{call.status}</Badge>
-                        {call.startedAt && (
-                          <p className="text-xs text-muted-foreground">
-                            {formatDistanceToNow(new Date(call.startedAt), { addSuffix: true })}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {call.transcript && (
-                      <div className="bg-muted/50 rounded p-3 text-sm font-mono">
-                        {call.transcript}
-                      </div>
-                    )}
-                    {call.outcome && (
-                      <p className="text-sm text-muted-foreground mt-2">Outcome: {call.outcome}</p>
-                    )}
-                  </div>
+                  <CallRow key={call.id} call={call} data-testid={`call-detail-${call.id}`} />
                 ))
               ) : (
                 <div className="px-6 py-12 text-center text-muted-foreground">
@@ -753,4 +722,178 @@ export default function CampaignDetail() {
       </Tabs>
     </div>
   );
+}
+
+interface TranscriptTurn {
+  speaker: string;
+  text: string;
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+/**
+ * Parse a VAPI transcript string into labelled speaker turns.
+ * VAPI uses lines like "AI: ..." and "User: ..." (or "Assistant:" / "Human:").
+ * Falls back to showing the raw text as a single unspeakered block.
+ */
+function parseTranscript(raw: string): TranscriptTurn[] {
+  const lines = raw.split('\n').filter((l) => l.trim() !== '');
+  const turns: TranscriptTurn[] = [];
+
+  // Matches lines that start with "SpeakerName: text"
+  const speakerRe = /^([A-Za-z][A-Za-z0-9 _-]{0,30}):\s*(.+)$/;
+
+  let current: TranscriptTurn | null = null;
+
+  for (const line of lines) {
+    const m = line.match(speakerRe);
+    if (m) {
+      if (current) turns.push(current);
+      current = { speaker: m[1].trim(), text: m[2].trim() };
+    } else if (current) {
+      // Continuation of the previous speaker's turn
+      current.text += ' ' + line.trim();
+    } else {
+      // No speaker prefix found yet — treat as a single raw block
+      current = { speaker: '', text: line.trim() };
+    }
+  }
+  if (current) turns.push(current);
+
+  return turns;
+}
+
+function speakerClass(speaker: string): string {
+  const s = speaker.toLowerCase();
+  if (s === 'ai' || s === 'assistant' || s === 'agent' || s === 'bot') {
+    return 'bg-primary/10 text-primary';
+  }
+  if (s === 'user' || s === 'human' || s === 'customer' || s === 'lead') {
+    return 'bg-muted text-muted-foreground';
+  }
+  return 'bg-secondary/50 text-secondary-foreground';
+}
+
+function CallRow({ call, 'data-testid': testId }: CallRowProps) {
+  const [expanded, setExpanded] = useState(false);
+  const hasTranscript = Boolean(call.transcript?.trim());
+  const turns = hasTranscript ? parseTranscript(call.transcript!) : [];
+
+  return (
+    <div data-testid={testId}>
+      {/* Summary row – always visible */}
+      <button
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors text-left group"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
+            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium truncate">{call.leadName ?? 'Unknown'}</p>
+            <p className="text-sm text-muted-foreground font-mono">{call.leadPhone ?? '—'}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4 shrink-0 ml-4">
+          {call.duration != null && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {formatDuration(call.duration)}
+            </span>
+          )}
+          {hasTranscript && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" />
+              {turns.length} turns
+            </span>
+          )}
+          {call.startedAt && (
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              {formatDistanceToNow(new Date(call.startedAt), { addSuffix: true })}
+            </span>
+          )}
+          <Badge variant="outline" className="text-xs">{call.status}</Badge>
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-6 pb-5 space-y-4 border-t border-card-border bg-muted/10">
+          {/* Outcome / summary */}
+          {call.outcome && (
+            <div className="pt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Outcome</p>
+              <p className="text-sm">{call.outcome}</p>
+            </div>
+          )}
+
+          {/* Recording */}
+          <div className={call.outcome ? '' : 'pt-4'}>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
+              <Mic className="w-3 h-3" /> Recording
+            </p>
+            {call.recordingUrl ? (
+              <audio
+                controls
+                src={call.recordingUrl}
+                className="w-full h-10 rounded"
+                preload="none"
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No recording available for this call.</p>
+            )}
+          </div>
+
+          {/* Transcript */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+              Transcript
+            </p>
+            {hasTranscript ? (
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                {turns.map((turn, i) => (
+                  <div
+                    key={i}
+                    className="flex gap-3 items-start text-sm"
+                  >
+                    {turn.speaker ? (
+                      <span
+                        className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded mt-0.5 whitespace-nowrap ${speakerClass(turn.speaker)}`}
+                      >
+                        {turn.speaker}
+                      </span>
+                    ) : null}
+                    <p className="leading-relaxed text-foreground/90">{turn.text}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No transcript available for this call.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface CallRowProps {
+  call: {
+    id: number;
+    leadName?: string | null;
+    leadPhone?: string | null;
+    status: string;
+    duration?: number | null;
+    transcript?: string | null;
+    recordingUrl?: string | null;
+    outcome?: string | null;
+    startedAt?: string | null;
+  };
+  'data-testid'?: string;
 }

@@ -21,6 +21,11 @@ export async function runStartupMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS called_leads integer NOT NULL DEFAULT 0
   `);
 
+  await db.execute(sql`
+    ALTER TABLE call_logs
+      ADD COLUMN IF NOT EXISTS recording_url text
+  `);
+
   // 2. Reconcile counters for every campaign from source-of-truth tables.
   //    Runs unconditionally so drift (stale non-zero values) is also repaired.
   await db.execute(sql`

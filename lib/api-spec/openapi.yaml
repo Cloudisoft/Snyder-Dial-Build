@@ -785,6 +785,8 @@ components:
           type: ["number", "null"]
         transcript:
           type: ["string", "null"]
+        recordingUrl:
+          type: ["string", "null"]
         outcome:
           type: ["string", "null"]
         startedAt:

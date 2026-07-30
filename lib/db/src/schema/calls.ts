@@ -12,6 +12,7 @@ export const callLogsTable = pgTable("call_logs", {
   status: text("status").notNull().default("initiated"), // initiated, in_progress, completed, failed, no_answer, voicemail
   duration: integer("duration"), // seconds
   transcript: text("transcript"),
+  recordingUrl: text("recording_url"),
   outcome: text("outcome"),
   startedAt: timestamp("started_at", { withTimezone: true }),
   endedAt: timestamp("ended_at", { withTimezone: true }),
