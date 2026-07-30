@@ -119,14 +119,59 @@ export async function updateVapiAssistant(
 // ─── VAPI Phone Number ───────────────────────────────────────────────────────
 
 /**
- * Register a Twilio BYOT phone number in VAPI. Returns the VAPI phone number ID.
+ * Find an existing Twilio credential in VAPI by matching account SID,
+ * or create a new one. Returns the credential UUID.
+ */
+async function ensureVapiTwilioCredential(
+  vapiApiKey: string,
+  twilioAccountSid: string,
+  twilioAuthToken: string,
+): Promise<string> {
+  // List existing credentials and reuse if already present
+  const res = await fetch("https://api.vapi.ai/credential", {
+    headers: { Authorization: `Bearer ${vapiApiKey}` },
+  });
+  if (res.ok) {
+    const creds = await res.json() as Array<{ id: string; provider: string; twilioAccountSid?: string }>;
+    const existing = creds.find(
+      (c) => c.provider === "twilio" && c.twilioAccountSid === twilioAccountSid,
+    );
+    if (existing) return existing.id;
+  }
+
+  // Create a new Twilio credential
+  const data = await vapiRequest("/credential", vapiApiKey, "POST", {
+    provider: "twilio",
+    twilioAccountSid,
+    twilioAuthToken,
+  });
+  return data.id as string;
+}
+
+/**
+ * Register a Twilio BYOT phone number in VAPI.
+ * Step 1: ensure a Twilio credential exists and get its UUID.
+ * Step 2: create/find the phone number using that credentialId.
+ * Returns the VAPI phone number ID.
  */
 export async function registerVapiPhoneNumber(opts: RegisterPhoneNumberOptions): Promise<string> {
+  // Check if this number is already registered
+  const existing = await listVapiPhoneNumbers(opts.vapiApiKey);
+  const match = existing.find((p) => p.number === opts.twilioPhoneNumber);
+  if (match) return match.id;
+
+  // Get or create the Twilio credential object in VAPI
+  const credentialId = await ensureVapiTwilioCredential(
+    opts.vapiApiKey,
+    opts.twilioAccountSid,
+    opts.twilioAuthToken,
+  );
+
+  // Register the phone number using the credential UUID
   const data = await vapiRequest("/phone-number", opts.vapiApiKey, "POST", {
-    provider: "byo-phone-number",
+    provider: "twilio",
     number: opts.twilioPhoneNumber,
-    twilioAccountSid: opts.twilioAccountSid,
-    twilioAuthToken: opts.twilioAuthToken,
+    credentialId,
     name: opts.name ?? "Snyder Dialer",
   });
   return data.id as string;
@@ -136,8 +181,11 @@ export async function registerVapiPhoneNumber(opts: RegisterPhoneNumberOptions):
  * List phone numbers registered in VAPI to check if one already exists.
  */
 export async function listVapiPhoneNumbers(vapiApiKey: string): Promise<Array<{ id: string; number: string }>> {
-  const data = await vapiRequest("/phone-number", vapiApiKey);
-  return (data as unknown as Array<{ id: string; number: string }>);
+  const res = await fetch("https://api.vapi.ai/phone-number", {
+    headers: { Authorization: `Bearer ${vapiApiKey}` },
+  });
+  if (!res.ok) return [];
+  return res.json() as Promise<Array<{ id: string; number: string }>>;
 }
 
 // ─── Initiate Call ───────────────────────────────────────────────────────────
