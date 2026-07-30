@@ -156,7 +156,9 @@ async function ensureVapiTwilioCredential(
 
 /**
  * Register a Twilio BYOT phone number in VAPI.
- * Uses provider "twilio" with twilioAccountSid + twilioAuthToken inline.
+ * First ensures a Twilio credential object exists in VAPI (reusing one if already
+ * present for this account SID), then registers the phone number referencing that
+ * credential by ID. This is the approach required by current VAPI API versions.
  * Returns the VAPI phone number ID.
  */
 export async function registerVapiPhoneNumber(opts: RegisterPhoneNumberOptions): Promise<string> {
@@ -165,12 +167,20 @@ export async function registerVapiPhoneNumber(opts: RegisterPhoneNumberOptions):
   const match = existing.find((p) => p.number === opts.twilioPhoneNumber);
   if (match) return match.id;
 
-  // Register the phone number with Twilio credentials inline
+  // Ensure a Twilio credential object exists in VAPI, then register the phone
+  // number referencing it by ID (avoids embedding raw credentials in the request).
+  const credentialId = await ensureVapiTwilioCredential(
+    opts.vapiApiKey,
+    opts.twilioAccountSid,
+    opts.twilioAuthToken,
+    opts.twilioApiKey,
+    opts.twilioApiSecret,
+  );
+
   const data = await vapiRequest("/phone-number", opts.vapiApiKey, "POST", {
     provider: "twilio",
     number: opts.twilioPhoneNumber,
-    twilioAccountSid: opts.twilioAccountSid,
-    twilioAuthToken: opts.twilioAuthToken,
+    credentialId,
     name: opts.name ?? "Snyder Dialer",
   });
   return data.id as string;
@@ -204,7 +214,9 @@ export async function initiateVapiCall(opts: VapiCallOptions): Promise<VapiCallR
     body = {
       type: "outboundPhoneCall",
       assistantId: opts.assistantId,
-      // Override the system prompt per-call so lead variables are interpolated
+      // Override the system prompt per-call so lead variables are interpolated.
+      // provider + model must be included because VAPI shallow-merges nested objects —
+      // specifying only `messages` would cause provider/model-name to be lost.
       assistantOverrides: {
         model: {
           provider: "openai",
