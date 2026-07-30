@@ -3,20 +3,33 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Snyder Dialer API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: campaigns
+    description: Campaign management
+  - name: leads
+    description: Lead management
+  - name: knowledge-base
+    description: Knowledge base files
+  - name: calls
+    description: Call logs
+  - name: prompt-templates
+    description: Prompt templates
+  - name: dashboard
+    description: Dashboard analytics
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +37,807 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # Auth
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRegister"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserLogin"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Unauthorized
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: OK
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+
+  # Dashboard
+  /dashboard/stats:
+    get:
+      operationId: getDashboardStats
+      tags: [dashboard]
+      summary: Get dashboard stats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardStats"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  # Campaigns
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCampaign
+      tags: [campaigns]
+      summary: Update a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteCampaign
+      tags: [campaigns]
+      summary: Delete a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: No content
+
+  /campaigns/{id}/launch:
+    post:
+      operationId: launchCampaign
+      tags: [campaigns]
+      summary: Launch a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}/pause:
+    post:
+      operationId: pauseCampaign
+      tags: [campaigns]
+      summary: Pause a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+
+  /campaigns/{id}/stats:
+    get:
+      operationId: getCampaignStats
+      tags: [campaigns]
+      summary: Get campaign stats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignStats"
+
+  # Leads
+  /campaigns/{id}/leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List leads for a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+
+  /campaigns/{id}/leads/upload:
+    post:
+      operationId: importLeadsCsv
+      tags: [leads]
+      summary: Upload leads CSV for a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/LeadsCsvUpload"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResult"
+
+  /leads/{id}:
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      summary: Delete a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: No content
+
+  # Knowledge Base
+  /campaigns/{id}/knowledge-base:
+    get:
+      operationId: listKnowledgeBaseFiles
+      tags: [knowledge-base]
+      summary: List knowledge base files for a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeBaseFile"
+
+  /campaigns/{id}/knowledge-base/upload:
+    post:
+      operationId: addKnowledgeBaseDoc
+      tags: [knowledge-base]
+      summary: Upload a knowledge base file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/KbDocUpload"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBaseFile"
+
+  /knowledge-base/{id}:
+    delete:
+      operationId: deleteKnowledgeBaseFile
+      tags: [knowledge-base]
+      summary: Delete a knowledge base file
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: No content
+
+  # Calls
+  /campaigns/{id}/calls:
+    get:
+      operationId: listCalls
+      tags: [calls]
+      summary: List calls for a campaign
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CallLog"
+
+  /calls/{id}:
+    get:
+      operationId: getCall
+      tags: [calls]
+      summary: Get a call log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallLog"
+
+  # Prompt Templates
+  /prompt-templates:
+    get:
+      operationId: listPromptTemplates
+      tags: [prompt-templates]
+      summary: List prompt templates
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptTemplate"
+    post:
+      operationId: createPromptTemplate
+      tags: [prompt-templates]
+      summary: Create a prompt template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptTemplate"
+
+  /prompt-templates/{id}:
+    patch:
+      operationId: updatePromptTemplate
+      tags: [prompt-templates]
+      summary: Update a prompt template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptTemplateUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptTemplate"
+    delete:
+      operationId: deletePromptTemplate
+      tags: [prompt-templates]
+      summary: Delete a prompt template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "204":
+          description: No content
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    User:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:
+          type: number
+        email:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    UserRegister:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+
+    UserLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+
+    DashboardStats:
+      type: object
+      required: [totalCampaigns, activeCampaigns, totalLeads, totalCalls, successfulCalls, avgCallDuration]
+      properties:
+        totalCampaigns:
+          type: number
+        activeCampaigns:
+          type: number
+        totalLeads:
+          type: number
+        totalCalls:
+          type: number
+        successfulCalls:
+          type: number
+        avgCallDuration:
+          type: number
+
+    ActivityItem:
+      type: object
+      required: [id, type, message, createdAt]
+      properties:
+        id:
+          type: number
+        type:
+          type: string
+          enum: [call_completed, campaign_launched, leads_uploaded, campaign_paused]
+        message:
+          type: string
+        campaignId:
+          type: ["number", "null"]
+        campaignName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    Campaign:
+      type: object
+      required: [id, name, status, objective, masterPrompt, createdAt, updatedAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, paused, completed]
+        objective:
+          type: string
+        masterPrompt:
+          type: string
+        twilioAccountSid:
+          type: ["string", "null"]
+        twilioAuthToken:
+          type: ["string", "null"]
+        twilioPhoneNumber:
+          type: ["string", "null"]
+        vapiApiKey:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CampaignInput:
+      type: object
+      required: [name, objective, masterPrompt]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        objective:
+          type: string
+        masterPrompt:
+          type: string
+        twilioAccountSid:
+          type: string
+        twilioAuthToken:
+          type: string
+        twilioPhoneNumber:
+          type: string
+        vapiApiKey:
+          type: string
+
+    CampaignUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        objective:
+          type: string
+        masterPrompt:
+          type: string
+        twilioAccountSid:
+          type: string
+        twilioAuthToken:
+          type: string
+        twilioPhoneNumber:
+          type: string
+        vapiApiKey:
+          type: string
+
+    CampaignStats:
+      type: object
+      required: [campaignId, totalLeads, calledLeads, pendingLeads, successfulCalls, failedCalls, avgCallDuration]
+      properties:
+        campaignId:
+          type: number
+        totalLeads:
+          type: number
+        calledLeads:
+          type: number
+        pendingLeads:
+          type: number
+        successfulCalls:
+          type: number
+        failedCalls:
+          type: number
+        avgCallDuration:
+          type: number
+
+    Lead:
+      type: object
+      required: [id, campaignId, name, phone, status, createdAt]
+      properties:
+        id:
+          type: number
+        campaignId:
+          type: number
+        name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: ["string", "null"]
+        company:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, calling, completed, failed, do_not_call]
+        createdAt:
+          type: string
+          format: date-time
+
+    LeadsCsvUpload:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+
+    UploadResult:
+      type: object
+      required: [imported, skipped, total]
+      properties:
+        imported:
+          type: number
+        skipped:
+          type: number
+        total:
+          type: number
+
+    KnowledgeBaseFile:
+      type: object
+      required: [id, campaignId, fileName, fileType, status, createdAt]
+      properties:
+        id:
+          type: number
+        campaignId:
+          type: number
+        fileName:
+          type: string
+        fileType:
+          type: string
+        status:
+          type: string
+          enum: [processing, ready, error]
+        createdAt:
+          type: string
+          format: date-time
+
+    KbDocUpload:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+
+    CallLog:
+      type: object
+      required: [id, campaignId, leadId, status, createdAt]
+      properties:
+        id:
+          type: number
+        campaignId:
+          type: number
+        leadId:
+          type: number
+        leadName:
+          type: ["string", "null"]
+        leadPhone:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [initiated, in_progress, completed, failed, no_answer, voicemail]
+        duration:
+          type: ["number", "null"]
+        transcript:
+          type: ["string", "null"]
+        outcome:
+          type: ["string", "null"]
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        endedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    PromptTemplate:
+      type: object
+      required: [id, name, content, createdAt]
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        content:
+          type: string
+        variables:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    PromptTemplateInput:
+      type: object
+      required: [name, content]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        variables:
+          type: array
+          items:
+            type: string
+
+    PromptTemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        variables:
+          type: array
+          items:
+            type: string

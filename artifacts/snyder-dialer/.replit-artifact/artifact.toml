@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "Snyder Dialer"
+version = "1.0.0"
+id = "artifacts/snyder-dialer"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23007
+
+[services.development]
+run = "pnpm --filter @workspace/snyder-dialer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/snyder-dialer", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/snyder-dialer/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23007"
+BASE_PATH = "/"

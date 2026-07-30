@@ -1,0 +1,77 @@
+Snyder Dialer
+
+Build a production-ready AI outbound calling platform named Snyder Dialer using React + Tailwind + Node.js + Express.
+
+Core Workflow
+User signs in.
+User creates a campaign.
+User uploads a CSV/XLSX lead list.
+User uploads one or more Knowledge Base files (PDF, DOCX, TXT, CSV).
+User configures:
+Twilio credentials
+VAPI API Key
+Master AI Prompt (System Prompt)
+Campaign Objective
+The system processes the uploaded Knowledge Base so the AI can search it during calls.
+The AI automatically calls every lead using VAPI + Twilio.
+Master AI Prompt (Highest Priority)
+
+Every campaign must have a Master AI Prompt.
+
+This prompt is the AI's permanent instruction set and always takes the highest priority during every conversation.
+
+The AI must never ignore or override this prompt.
+
+The prompt editor should support:
+
+Large prompt input
+Prompt templates
+Variables such as {{name}}, {{company}}, {{phone}}, {{notes}}, and custom fields
+Save and edit prompts
+Test prompt before launching a campaign
+Prompt Priority
+
+The AI must always follow this order:
+
+Master AI Prompt (Highest Authority)
+Retrieved information from the uploaded Knowledge Base
+Uploaded lead information
+Current customer conversation
+Conversation memory from previous calls
+
+If there is any conflict, the Master AI Prompt always wins.
+
+Knowledge Base
+
+Allow uploading:
+
+PDF
+DOCX
+TXT
+CSV
+
+The system should:
+
+Extract text from uploaded files.
+Index the content for semantic search.
+During live calls, retrieve only the most relevant information from the uploaded documents.
+Use the retrieved information naturally in conversations.
+Learn from newly uploaded documents automatically without requiring prompt changes.
+Never invent answers if the information isn't present in the Knowledge Base or the Master AI Prompt.
+
+The Knowledge Base should act as the AI's dynamic memory, while the Master AI Prompt defines its behavior, personality, sales strategy, and conversation rules.
+
+AI Agent
+
+The AI should:
+
+Speak naturally like an experienced salesperson.
+Build trust before selling.
+Personalize every conversation using lead data.
+Learn and answer from the uploaded Knowledge Base.
+Follow the Master AI Prompt at all times.
+Handle objections intelligently.
+Adapt its tone to the prospect.
+Stay polite, confident, and consultative.
+Remember previous conversations for future follow-ups.
+Focus on achieving the campaign objective (appointment, qualification, sale, etc.) while remaining truthful and compliant.
