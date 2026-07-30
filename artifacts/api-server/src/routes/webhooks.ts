@@ -21,8 +21,10 @@ function vapiEndReasonToStatus(endedReason: string | undefined): string {
   if (!endedReason) return "completed";
   const r = endedReason.toLowerCase();
   if (r.includes("no-answer") || r.includes("no_answer") || r.includes("busy")) return "no_answer";
-  if (r.includes("failed") || r.includes("error") || r.includes("machine")) return "failed";
-  if (r.includes("voicemail")) return "voicemail";
+  // "machine-*" reasons mean voicemail detection — not a failure
+  if (r.includes("machine") || r.includes("voicemail")) return "voicemail";
+  // Only explicit error/failed reasons are true failures
+  if (r === "failed" || r.includes("assistant-error") || r.includes("pipeline-error")) return "failed";
   return "completed";
 }
 
@@ -154,32 +156,12 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
       }
 
     } else if (eventType === "hang") {
-      // Call was hung up unexpectedly — same idempotency guard as call-ended
-      const TERMINAL_STATUSES = ["completed", "failed", "no_answer", "voicemail"] as const;
-
-      const [updatedCall] = await db
-        .update(callLogsTable)
-        .set({ status: "failed", endedAt: new Date() })
-        .where(
-          and(
-            eq(callLogsTable.vapiCallId, callId),
-            notInArray(callLogsTable.status, [...TERMINAL_STATUSES]),
-          )
-        )
-        .returning();
-
-      if (updatedCall?.leadId) {
-        await db
-          .update(leadsTable)
-          .set({ status: "failed" })
-          .where(eq(leadsTable.id, updatedCall.leadId));
-      }
-      if (updatedCall?.campaignId) {
-        await db
-          .update(campaignsTable)
-          .set({ calledLeads: sql`${campaignsTable.calledLeads} + 1` })
-          .where(eq(campaignsTable.id, updatedCall.campaignId));
-      }
+      // VAPI fires "hang" when any party hangs up, followed immediately by
+      // "end-of-call-report" which carries the real outcome and endedReason.
+      // We must NOT set a terminal status here — doing so would block the
+      // idempotency guard in "end-of-call-report" from writing the real status.
+      // Just log and acknowledge.
+      logger.info({ vapiCallId: callId }, "VAPI hang event received — awaiting end-of-call-report");
     }
 
     res.sendStatus(200);
