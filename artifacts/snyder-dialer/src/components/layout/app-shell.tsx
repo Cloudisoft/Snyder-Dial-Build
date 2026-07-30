@@ -42,9 +42,7 @@ export function AppShell({ children }: AppShellProps) {
         {/* Logo */}
         <div className="h-16 px-6 flex items-center border-b border-border">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-primary rounded flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm tracking-tight">SD</span>
-            </div>
+            <img src="/snyder-logo.png" alt="Snyder Dialer" className="w-9 h-9 object-contain" />
             <span className="font-bold text-lg tracking-tight">SNYDER DIALER</span>
           </Link>
         </div>

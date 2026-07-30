@@ -67,9 +67,7 @@ export default function Login() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-primary rounded flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-lg">SD</span>
-            </div>
+            <img src="/snyder-logo.png" alt="Snyder Dialer" className="w-16 h-16 object-contain" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">SNYDER DIALER</h1>
           <p className="text-muted-foreground">AI-powered outbound calling platform</p>
