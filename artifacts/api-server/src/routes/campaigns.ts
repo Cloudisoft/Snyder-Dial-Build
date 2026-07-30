@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import { eq, count, and } from "drizzle-orm";
 import { db, campaignsTable, leadsTable, callLogsTable, activityLogTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
+import { initiateVapiCall, interpolatePrompt } from "../lib/vapi";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -101,7 +103,69 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
     campaignName: campaign.name,
   });
 
+  // Respond immediately — call dialing runs in the background
   res.json(campaign);
+
+  // Kick off VAPI calls for all pending leads (fire-and-forget after response)
+  if (campaign.vapiApiKey && campaign.twilioAccountSid && campaign.twilioAuthToken && campaign.twilioPhoneNumber) {
+    const pendingLeads = await db
+      .select()
+      .from(leadsTable)
+      .where(and(eq(leadsTable.campaignId, id), eq(leadsTable.status, "pending")));
+
+    // Build the webhook URL for VAPI to call back with call events
+    const host = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : (process.env.API_BASE_URL ?? "");
+    const webhookUrl = `${host}/api/webhooks/vapi`;
+
+    for (const lead of pendingLeads) {
+      try {
+        // Mark lead as "calling" so it isn't re-dialed by a subsequent launch
+        await db.update(leadsTable).set({ status: "calling" }).where(eq(leadsTable.id, lead.id));
+
+        const systemPrompt = interpolatePrompt(campaign.masterPrompt, {
+          name: lead.name,
+          company: lead.company,
+          phone: lead.phone,
+          email: lead.email,
+          notes: lead.notes,
+        });
+
+        const { callId } = await initiateVapiCall({
+          vapiApiKey: campaign.vapiApiKey!,
+          twilioAccountSid: campaign.twilioAccountSid!,
+          twilioAuthToken: campaign.twilioAuthToken!,
+          twilioPhoneNumber: campaign.twilioPhoneNumber!,
+          toNumber: lead.phone,
+          customerName: lead.name,
+          systemPrompt,
+          webhookUrl,
+        });
+
+        // Create a call log entry linked to the VAPI call ID
+        await db.insert(callLogsTable).values({
+          campaignId: id,
+          leadId: lead.id,
+          vapiCallId: callId,
+          status: "initiated",
+          startedAt: new Date(),
+        });
+
+        logger.info({ campaignId: id, leadId: lead.id, vapiCallId: callId }, "VAPI call initiated");
+      } catch (err) {
+        logger.error({ campaignId: id, leadId: lead.id, err }, "Failed to initiate VAPI call");
+
+        // Revert lead status so it can be retried on next launch
+        await db.update(leadsTable).set({ status: "pending" }).where(eq(leadsTable.id, lead.id));
+      }
+    }
+  } else {
+    logger.warn(
+      { campaignId: id },
+      "Campaign launched without VAPI/Twilio credentials — no calls will be dialed"
+    );
+  }
 });
 
 router.post("/campaigns/:id/pause", requireAuth, async (req, res): Promise<void> => {

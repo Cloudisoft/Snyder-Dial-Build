@@ -8,6 +8,7 @@ export const callLogsTable = pgTable("call_logs", {
   id: serial("id").primaryKey(),
   campaignId: serial("campaign_id").references(() => campaignsTable.id),
   leadId: serial("lead_id").references(() => leadsTable.id),
+  vapiCallId: text("vapi_call_id"), // VAPI call ID for webhook matching
   status: text("status").notNull().default("initiated"), // initiated, in_progress, completed, failed, no_answer, voicemail
   duration: integer("duration"), // seconds
   transcript: text("transcript"),
