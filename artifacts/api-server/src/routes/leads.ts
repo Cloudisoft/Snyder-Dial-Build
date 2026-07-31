@@ -7,6 +7,31 @@ import { requireAuth } from "../middlewares/auth";
 import { initiateVapiCall, interpolatePrompt } from "../lib/vapi";
 import { logger } from "../lib/logger";
 
+/**
+ * Normalize a phone number to E.164 format (+1XXXXXXXXXX for US).
+ * Handles: +13244585679, 13244585679, 3244585679, 324-458-5679, (324) 458-5679, etc.
+ */
+function normalizePhone(raw: string): string {
+  const trimmed = raw.trim();
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (hasPlus) {
+    // Already had a + prefix — trust the country code as-is
+    return `+${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    // 1XXXXXXXXXX → +1XXXXXXXXXX
+    return `+${digits}`;
+  }
+  if (digits.length === 10) {
+    // XXXXXXXXXX → +1XXXXXXXXXX (assume US)
+    return `+1${digits}`;
+  }
+  // Shorter/longer numbers: prepend + and let VAPI validate
+  return `+${digits}`;
+}
+
 /** Fire-and-forget: dial a lead immediately if the campaign is active and credentials are available. */
 async function dialLeadIfActive(campaignId: number, leadId: number, userId: number): Promise<void> {
   const [campaign] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, campaignId));
@@ -84,7 +109,7 @@ router.post("/campaigns/:id/leads", requireAuth, async (req, res): Promise<void>
   if (!name || !phone) { res.status(400).json({ error: "name and phone are required" }); return; }
 
   const [lead] = await db.insert(leadsTable).values({
-    campaignId, name, phone,
+    campaignId, name, phone: normalizePhone(phone),
     email: email || null,
     company: company || null,
     notes: notes || null,
@@ -123,8 +148,9 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
   for (const row of records) {
     // Support multiple column name variants
     const name = row["name"] || row["Name"] || row["full_name"] || row["Full Name"] || "";
-    const phone = row["phone"] || row["Phone"] || row["phone_number"] || row["Phone Number"] || "";
-    if (!name || !phone) { skipped++; continue; }
+    const rawPhone = row["phone"] || row["Phone"] || row["phone_number"] || row["Phone Number"] || "";
+    if (!name || !rawPhone) { skipped++; continue; }
+    const phone = normalizePhone(rawPhone);
 
     const [lead] = await db.insert(leadsTable).values({
       campaignId,

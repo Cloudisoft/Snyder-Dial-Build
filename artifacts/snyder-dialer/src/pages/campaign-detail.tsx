@@ -210,12 +210,8 @@ export default function CampaignDetail() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
-
     importLeads.mutate(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      { id: campaignId, data: formData as any },
+      { id: campaignId, data: { file } },
       {
         onSuccess: (result) => {
           queryClient.invalidateQueries({ queryKey: getListLeadsQueryKey(campaignId) });
