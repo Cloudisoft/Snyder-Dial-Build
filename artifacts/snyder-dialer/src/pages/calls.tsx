@@ -1,100 +1,118 @@
-import { useGetDashboardActivity } from '@workspace/api-client-react';
-import { Badge } from '@/components/ui/badge';
-import { Phone, CheckCircle2, XCircle, Clock, Voicemail } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Phone, RefreshCw, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { CallRow, FilterTabs, getDisposition, type CallRecord, type FilterId } from '@/components/call-row';
+import { getToken } from '@/lib/auth';
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+async function fetchAllCalls(): Promise<CallRecord[]> {
+  const res = await fetch(`${BASE}/api/calls/all`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Failed to fetch calls');
+  return res.json();
+}
 
 export default function Calls() {
-  const { data: activity, isLoading } = useGetDashboardActivity();
+  const [activeFilter, setActiveFilter] = useState<FilterId>('all');
+  const [search, setSearch] = useState('');
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  // Filter for call-related activity
-  const callActivity = activity?.filter((item) => item.type === 'call_completed') || [];
+  const { data: calls = [], isLoading, isFetching, dataUpdatedAt } = useQuery({
+    queryKey: ['calls', 'all'],
+    queryFn: fetchAllCalls,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-chart-5" />;
-      case 'failed':
-        return <XCircle className="w-4 h-4 text-destructive" />;
-      case 'no_answer':
-        return <Clock className="w-4 h-4 text-chart-2" />;
-      case 'voicemail':
-        return <Voicemail className="w-4 h-4 text-muted-foreground" />;
-      default:
-        return <Phone className="w-4 h-4 text-muted-foreground" />;
-    }
-  };
+  useEffect(() => {
+    if (dataUpdatedAt) setLastRefreshed(new Date(dataUpdatedAt));
+  }, [dataUpdatedAt]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-chart-5 text-background';
-      case 'failed':
-        return 'bg-destructive text-destructive-foreground';
-      case 'no_answer':
-        return 'bg-chart-2 text-background';
-      case 'in_progress':
-        return 'bg-primary text-primary-foreground';
-      default:
-        return 'bg-secondary text-secondary-foreground';
-    }
-  };
+  // Build counts per disposition for filter badges
+  const counts: Record<string, number> = { all: calls.length };
+  for (const call of calls) {
+    const d = getDisposition(call);
+    counts[d] = (counts[d] ?? 0) + 1;
+  }
+
+  // Apply filter + search
+  const filtered = calls.filter((call) => {
+    const matchFilter = activeFilter === 'all' || getDisposition(call) === activeFilter;
+    if (!matchFilter) return false;
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (
+      call.leadName?.toLowerCase().includes(q) ||
+      call.leadPhone?.includes(q) ||
+      call.campaignName?.toLowerCase().includes(q) ||
+      call.outcome?.toLowerCase().includes(q)
+    );
+  });
+
+  const secondsAgo = Math.round((Date.now() - lastRefreshed.getTime()) / 1000);
 
   return (
-    <div className="p-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Global Call Log</h1>
-        <p className="text-muted-foreground">All calls across all campaigns</p>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Call History</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">All calls across all campaigns — updates every 15 seconds</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin text-primary' : ''}`} />
+          {isFetching ? 'Refreshing…' : `Updated ${secondsAgo}s ago`}
+        </div>
       </div>
 
-      <div className="bg-card border border-card-border rounded-lg">
-        <div className="px-6 py-4 border-b border-card-border">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Recent Calls</h2>
-            <p className="text-sm text-muted-foreground font-mono">
-              {callActivity.length} total
-            </p>
+      <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+        {/* Search + live badge */}
+        <div className="px-4 py-3 border-b border-card-border flex items-center gap-3">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, phone, campaign…"
+              className="pl-8 h-8 text-sm"
+            />
           </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-muted-foreground font-medium">Live</span>
+          </div>
+          <span className="text-sm text-muted-foreground font-mono">{filtered.length} calls</span>
         </div>
-        <div className="divide-y divide-card-border">
+
+        {/* Filter tabs */}
+        <FilterTabs active={activeFilter} counts={counts} onChange={setActiveFilter} />
+
+        {/* Call list */}
+        <div>
           {isLoading ? (
-            <>
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="px-6 py-5 h-24 animate-pulse" />
+            <div className="divide-y divide-card-border">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="px-6 py-4 h-20 animate-pulse bg-muted/30" />
               ))}
-            </>
-          ) : callActivity.length > 0 ? (
-            callActivity.map((item) => (
-              <div
-                key={item.id}
-                className="px-6 py-5 hover:bg-muted/50 transition-colors"
-                data-testid={`call-${item.id}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <Phone className="w-4 h-4 text-primary" />
-                      <p className="font-medium">{item.message}</p>
-                    </div>
-                    {item.campaignName && (
-                      <p className="text-sm text-muted-foreground">
-                        Campaign: {item.campaignName}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground font-mono mb-2">
-                      {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))
+            </div>
+          ) : filtered.length > 0 ? (
+            <div>
+              {filtered.map((call) => (
+                <CallRow key={call.id} call={call} showCampaign data-testid={`call-row-${call.id}`} />
+              ))}
+            </div>
           ) : (
-            <div className="px-6 py-24 text-center">
-              <Phone className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-              <p className="text-muted-foreground mb-2">No calls yet</p>
-              <p className="text-sm text-muted-foreground">
-                Launch a campaign to start making calls
+            <div className="px-6 py-20 text-center">
+              <Phone className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+              <p className="text-muted-foreground font-medium">
+                {activeFilter === 'all' && !search ? 'No calls yet' : 'No calls match this filter'}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                {activeFilter === 'all' && !search
+                  ? 'Launch a campaign to start making calls'
+                  : 'Try a different filter or clear the search'}
               </p>
             </div>
           )}

@@ -29,9 +29,10 @@ import { StatCard } from '@/components/ui/stat-card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus, ChevronDown, ChevronRight, Clock, MessageSquare, Mic, RefreshCw } from 'lucide-react';
+import { Play, Pause, Upload, Trash2, Users, Phone, CheckCircle2, XCircle, ArrowLeft, FileText, AlertTriangle, ExternalLink, UserPlus, RefreshCw } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { getToken } from '@/lib/auth';
+import { CallRow, FilterTabs, getDisposition, type FilterId } from '@/components/call-row';
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export default function CampaignDetail() {
@@ -49,7 +50,10 @@ export default function CampaignDetail() {
   const { data: stats } = useGetCampaignStats(campaignId);
   const { data: leads } = useListLeads(campaignId);
   const { data: kbFiles } = useListKnowledgeBaseFiles(campaignId);
-  const { data: calls } = useListCalls(campaignId);
+  const { data: calls = [], isFetching: callsFetching } = useListCalls(campaignId, {
+    query: { refetchInterval: 15_000, staleTime: 10_000 },
+  });
+  const [callsFilter, setCallsFilter] = useState<FilterId>('all');
 
   const updateCampaign = useUpdateCampaign();
   const launchCampaign = useLaunchCampaign();
@@ -574,22 +578,41 @@ export default function CampaignDetail() {
         </TabsContent>
 
         <TabsContent value="calls">
-          <div className="bg-card border border-card-border rounded-lg">
-            <div className="px-6 py-4 border-b border-card-border">
-              <h2 className="text-lg font-semibold">Call History</h2>
-              <p className="text-sm text-muted-foreground mt-0.5">Click a row to expand the transcript</p>
+          <div className="bg-card border border-card-border rounded-lg overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-card-border flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Call History</h2>
+                <p className="text-sm text-muted-foreground mt-0.5">Auto-refreshes every 15 seconds</p>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <RefreshCw className={`w-3.5 h-3.5 ${callsFetching ? 'animate-spin text-primary' : ''}`} />
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-medium">Live</span>
+              </div>
             </div>
-            <div className="divide-y divide-card-border">
-              {calls && calls.length > 0 ? (
-                calls.map((call) => (
-                  <CallRow key={call.id} call={call} data-testid={`call-detail-${call.id}`} />
-                ))
-              ) : (
-                <div className="px-6 py-12 text-center text-muted-foreground">
-                  No calls yet
-                </div>
-              )}
-            </div>
+            {/* Filter tabs */}
+            {(() => {
+              const counts: Record<string, number> = { all: calls.length };
+              for (const c of calls) { const d = getDisposition(c as Parameters<typeof getDisposition>[0]); counts[d] = (counts[d] ?? 0) + 1; }
+              const filtered = calls.filter((c) => callsFilter === 'all' || getDisposition(c as Parameters<typeof getDisposition>[0]) === callsFilter);
+              return (
+                <>
+                  <FilterTabs active={callsFilter} counts={counts} onChange={setCallsFilter} />
+                  <div>
+                    {filtered.length > 0 ? (
+                      filtered.map((call) => (
+                        <CallRow key={call.id} call={call as Parameters<typeof CallRow>[0]['call']} data-testid={`call-detail-${call.id}`} />
+                      ))
+                    ) : (
+                      <div className="px-6 py-12 text-center text-muted-foreground">
+                        {callsFilter === 'all' ? 'No calls yet' : 'No calls match this filter'}
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </TabsContent>
 
@@ -795,176 +818,3 @@ export default function CampaignDetail() {
   );
 }
 
-interface TranscriptTurn {
-  speaker: string;
-  text: string;
-}
-
-function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
-}
-
-/**
- * Parse a VAPI transcript string into labelled speaker turns.
- * VAPI uses lines like "AI: ..." and "User: ..." (or "Assistant:" / "Human:").
- * Falls back to showing the raw text as a single unspeakered block.
- */
-function parseTranscript(raw: string): TranscriptTurn[] {
-  const lines = raw.split('\n').filter((l) => l.trim() !== '');
-  const turns: TranscriptTurn[] = [];
-
-  // Matches lines that start with "SpeakerName: text"
-  const speakerRe = /^([A-Za-z][A-Za-z0-9 _-]{0,30}):\s*(.+)$/;
-
-  let current: TranscriptTurn | null = null;
-
-  for (const line of lines) {
-    const m = line.match(speakerRe);
-    if (m) {
-      if (current) turns.push(current);
-      current = { speaker: m[1].trim(), text: m[2].trim() };
-    } else if (current) {
-      // Continuation of the previous speaker's turn
-      current.text += ' ' + line.trim();
-    } else {
-      // No speaker prefix found yet — treat as a single raw block
-      current = { speaker: '', text: line.trim() };
-    }
-  }
-  if (current) turns.push(current);
-
-  return turns;
-}
-
-function speakerClass(speaker: string): string {
-  const s = speaker.toLowerCase();
-  if (s === 'ai' || s === 'assistant' || s === 'agent' || s === 'bot') {
-    return 'bg-primary/10 text-primary';
-  }
-  if (s === 'user' || s === 'human' || s === 'customer' || s === 'lead') {
-    return 'bg-muted text-muted-foreground';
-  }
-  return 'bg-secondary/50 text-secondary-foreground';
-}
-
-function CallRow({ call, 'data-testid': testId }: CallRowProps) {
-  const [expanded, setExpanded] = useState(false);
-  const hasTranscript = Boolean(call.transcript?.trim());
-  const turns = hasTranscript ? parseTranscript(call.transcript!) : [];
-
-  return (
-    <div data-testid={testId}>
-      {/* Summary row – always visible */}
-      <button
-        className="w-full px-6 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors text-left group"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="shrink-0 text-muted-foreground group-hover:text-foreground transition-colors">
-            {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          </div>
-          <div className="min-w-0">
-            <p className="font-medium truncate">{call.leadName ?? 'Unknown'}</p>
-            <p className="text-sm text-muted-foreground font-mono">{call.leadPhone ?? '—'}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4 shrink-0 ml-4">
-          {call.duration != null && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {formatDuration(call.duration)}
-            </span>
-          )}
-          {hasTranscript && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <MessageSquare className="w-3 h-3" />
-              {turns.length} turns
-            </span>
-          )}
-          {call.startedAt && (
-            <span className="text-xs text-muted-foreground hidden sm:block">
-              {formatDistanceToNow(new Date(call.startedAt), { addSuffix: true })}
-            </span>
-          )}
-          <Badge variant="outline" className="text-xs">{call.status}</Badge>
-        </div>
-      </button>
-
-      {/* Expanded detail */}
-      {expanded && (
-        <div className="px-6 pb-5 space-y-4 border-t border-card-border bg-muted/10">
-          {/* Outcome / summary */}
-          {call.outcome && (
-            <div className="pt-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Outcome</p>
-              <p className="text-sm">{call.outcome}</p>
-            </div>
-          )}
-
-          {/* Recording */}
-          <div className={call.outcome ? '' : 'pt-4'}>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1">
-              <Mic className="w-3 h-3" /> Recording
-            </p>
-            {call.recordingUrl ? (
-              <audio
-                controls
-                src={call.recordingUrl}
-                className="w-full h-10 rounded"
-                preload="none"
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground italic">No recording available for this call.</p>
-            )}
-          </div>
-
-          {/* Transcript */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-              Transcript
-            </p>
-            {hasTranscript ? (
-              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                {turns.map((turn, i) => (
-                  <div
-                    key={i}
-                    className="flex gap-3 items-start text-sm"
-                  >
-                    {turn.speaker ? (
-                      <span
-                        className={`shrink-0 text-xs font-semibold px-2 py-0.5 rounded mt-0.5 whitespace-nowrap ${speakerClass(turn.speaker)}`}
-                      >
-                        {turn.speaker}
-                      </span>
-                    ) : null}
-                    <p className="leading-relaxed text-foreground/90">{turn.text}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">No transcript available for this call.</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface CallRowProps {
-  call: {
-    id: number;
-    leadName?: string | null;
-    leadPhone?: string | null;
-    status: string;
-    duration?: number | null;
-    transcript?: string | null;
-    recordingUrl?: string | null;
-    outcome?: string | null;
-    startedAt?: string | null;
-  };
-  'data-testid'?: string;
-}
