@@ -1,2 +1,3 @@
 - [Tailwind v4 dark mode cascade](tw-dark-cascade.md) — `.dark` block must come AFTER `:root` in CSS or `:root` wins at equal specificity.
 - [Snyder Dialer auth pattern](snyder-dialer-auth.md) — JWT in localStorage key `snyder_token`; custom-fetch reads it automatically; all API routes use `requireAuth` middleware from `artifacts/api-server/src/middlewares/auth.ts`.
+- [Snyder Dialer concurrency dialer](snyder-dialer-concurrency.md) — shared dialer util at `artifacts/api-server/src/lib/dialer.ts`; all dialing flows call `fillConcurrencySlots(campaignId)`.

@@ -71,6 +71,7 @@ export default function CampaignDetail() {
   const [twilioAuthToken, setTwilioAuthToken] = useState('');
   const [twilioPhoneNumber, setTwilioPhoneNumber] = useState('');
   const [vapiApiKey, setVapiApiKey] = useState('');
+  const [concurrency, setConcurrency] = useState(1);
 
   // VAPI sync state
   const [syncing, setSyncing] = useState(false);
@@ -102,6 +103,7 @@ export default function CampaignDetail() {
     setTwilioAuthToken(campaign.twilioAuthToken || '');
     setTwilioPhoneNumber(campaign.twilioPhoneNumber || '');
     setVapiApiKey(campaign.vapiApiKey || '');
+    setConcurrency((campaign as any).concurrency ?? 1);
   }
 
   const campaignCredsSet = !!(campaign?.vapiApiKey && campaign?.twilioAccountSid && campaign?.twilioAuthToken && campaign?.twilioPhoneNumber);
@@ -196,6 +198,7 @@ export default function CampaignDetail() {
           twilioAuthToken,
           twilioPhoneNumber,
           vapiApiKey,
+          concurrency,
         },
       },
       {
@@ -762,6 +765,28 @@ export default function CampaignDetail() {
                   dashboard.vapi.ai/keys
                 </a>. VAPI handles the AI voice conversation; Twilio handles the phone call.
               </p>
+            </div>
+          </div>
+
+          {/* Concurrency */}
+          <div className="bg-card border border-card-border rounded-lg p-6">
+            <h2 className="text-lg font-semibold mb-1">Concurrency</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              How many calls can run simultaneously. Set to <strong>1</strong> for strictly sequential (one call finishes before the next begins). Increase for faster dialing on large lists.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={concurrency}
+                onChange={(e) => setConcurrency(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                className="w-24 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                data-testid="input-concurrency"
+              />
+              <span className="text-sm text-muted-foreground">
+                {concurrency === 1 ? 'Sequential — one call at a time' : `Up to ${concurrency} calls at once`}
+              </span>
             </div>
           </div>
 

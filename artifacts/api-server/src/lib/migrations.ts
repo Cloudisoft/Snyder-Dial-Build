@@ -39,6 +39,11 @@ export async function runStartupMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS twilio_api_secret   text
   `);
 
+  await db.execute(sql`
+    ALTER TABLE campaigns
+      ADD COLUMN IF NOT EXISTS concurrency integer NOT NULL DEFAULT 1
+  `);
+
   // 2. Reconcile counters for every campaign from source-of-truth tables.
   //    Runs unconditionally so drift (stale non-zero values) is also repaired.
   await db.execute(sql`

@@ -12,6 +12,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, notInArray, sql } from "drizzle-orm";
 import { db, callLogsTable, leadsTable, campaignsTable } from "@workspace/db";
+import { fillConcurrencySlots } from "../lib/dialer";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -137,6 +138,11 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           .update(campaignsTable)
           .set({ calledLeads: sql`${campaignsTable.calledLeads} + 1` })
           .where(eq(campaignsTable.id, updatedCall.campaignId));
+
+        // Slot just freed up — dial the next pending lead if the campaign is still active.
+        fillConcurrencySlots(updatedCall.campaignId).catch((err) =>
+          logger.error({ campaignId: updatedCall.campaignId, err }, "fillConcurrencySlots failed after call-ended"),
+        );
       }
 
       // Step 2: If the call was already terminal (updatedCall is undefined), a follow-up

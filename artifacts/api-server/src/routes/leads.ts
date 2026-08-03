@@ -4,7 +4,7 @@ import multer from "multer";
 import { parse } from "csv-parse/sync";
 import { db, leadsTable, activityLogTable, campaignsTable, usersTable, callLogsTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
-import { initiateVapiCall, interpolatePrompt } from "../lib/vapi";
+import { fillConcurrencySlots } from "../lib/dialer";
 import { logger } from "../lib/logger";
 
 /**
@@ -32,60 +32,11 @@ function normalizePhone(raw: string): string {
   return `+${digits}`;
 }
 
-/** Fire-and-forget: dial a lead immediately if the campaign is active and credentials are available. */
-async function dialLeadIfActive(campaignId: number, leadId: number, userId: number): Promise<void> {
-  const [campaign] = await db.select().from(campaignsTable).where(eq(campaignsTable.id, campaignId));
-  if (!campaign || campaign.status !== "active") return;
-
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
-  const vapiKey = campaign.vapiApiKey || user?.vapiApiKey;
-  const twilioSid = campaign.twilioAccountSid || user?.twilioAccountSid;
-  const twilioToken = campaign.twilioAuthToken || user?.twilioAuthToken;
-  const twilioPhone = campaign.twilioPhoneNumber || user?.twilioPhoneNumber;
-  if (!vapiKey || !twilioSid || !twilioToken || !twilioPhone) return;
-
-  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId));
-  if (!lead || lead.status !== "pending") return;
-
-  const replitDomains = process.env.REPLIT_DOMAINS;
-  const devDomain = process.env.REPLIT_DEV_DOMAIN;
-  const webhookHost = replitDomains
-    ? `https://${replitDomains.split(",")[0].trim()}`
-    : devDomain ? `https://${devDomain}` : (process.env.API_BASE_URL ?? "");
-  const webhookUrl = `${webhookHost}/api/webhooks/vapi`;
-
-  try {
-    await db.update(leadsTable).set({ status: "calling" }).where(eq(leadsTable.id, leadId));
-    const nameParts = (lead.name ?? "").trim().split(/\s+/);
-    const systemPrompt = interpolatePrompt(campaign.masterPrompt, {
-      name: lead.name,
-      first_name: nameParts[0] ?? "",
-      last_name: nameParts.slice(1).join(" ") || "",
-      company: lead.company,
-      phone: lead.phone,
-      email: lead.email,
-      notes: lead.notes,
-    });
-    const { callId } = await initiateVapiCall({
-      vapiApiKey: vapiKey,
-      toNumber: lead.phone,
-      customerName: lead.name,
-      systemPrompt,
-      webhookUrl,
-      assistantId: campaign.vapiAssistantId ?? undefined,
-      phoneNumberId: user?.vapiPhoneNumberId ?? undefined,
-      twilioAccountSid: twilioSid ?? undefined,
-      twilioAuthToken: twilioToken ?? undefined,
-      twilioPhoneNumber: twilioPhone ?? undefined,
-    });
-    await db.insert(callLogsTable).values({
-      campaignId, leadId, vapiCallId: callId, status: "initiated", startedAt: new Date(),
-    });
-    logger.info({ campaignId, leadId, callId }, "Auto-dialed lead added to active campaign");
-  } catch (err) {
-    logger.error({ campaignId, leadId, err }, "Failed to auto-dial lead");
-    await db.update(leadsTable).set({ status: "pending" }).where(eq(leadsTable.id, leadId));
-  }
+/** Fire-and-forget: fill available concurrency slots when a lead is added to an active campaign. */
+function dialIfSlotAvailable(campaignId: number): void {
+  fillConcurrencySlots(campaignId).catch((err) =>
+    logger.error({ campaignId, err }, "fillConcurrencySlots failed after lead added"),
+  );
 }
 
 const router: IRouter = Router();
@@ -123,7 +74,7 @@ router.post("/campaigns/:id/leads", requireAuth, async (req, res): Promise<void>
   res.status(201).json(lead);
 
   // Fire-and-forget: dial immediately if campaign is already active
-  dialLeadIfActive(campaignId, lead.id, req.auth!.userId).catch(() => {});
+  dialIfSlotAvailable(campaignId);
 });
 
 router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
@@ -211,7 +162,7 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
 
   // Fire-and-forget: dial all newly imported leads if campaign is already active
   for (const leadId of insertedIds) {
-    dialLeadIfActive(campaignId, leadId, req.auth!.userId).catch(() => {});
+    dialIfSlotAvailable(campaignId);
   }
 });
 

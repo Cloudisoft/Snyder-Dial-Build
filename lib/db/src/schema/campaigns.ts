@@ -18,6 +18,7 @@ export const campaignsTable = pgTable("campaigns", {
   calledLeads: integer("called_leads").notNull().default(0),
   // VAPI sync — set once the assistant is created/updated in VAPI
   vapiAssistantId: text("vapi_assistant_id"),
+  concurrency: integer("concurrency").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
