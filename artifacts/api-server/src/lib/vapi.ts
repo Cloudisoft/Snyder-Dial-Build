@@ -61,6 +61,51 @@ async function vapiRequest(path: string, vapiApiKey: string, method = "GET", bod
   return res.json() as Promise<Record<string, unknown>>;
 }
 
+// ─── Fetch call details from VAPI REST API ───────────────────────────────────
+
+export interface VapiCallDetails {
+  id: string;
+  status?: string;
+  startedAt?: string;
+  endedAt?: string;
+  endedReason?: string;
+  /** Plain-text transcript (full call) */
+  transcript?: string;
+  /** URL to the call recording MP3 */
+  recordingUrl?: string;
+  /** Post-call analysis from VAPI */
+  analysis?: { summary?: string; successEvaluation?: string };
+  /** Conversation turns — role can be 'system' | 'bot' | 'user' | 'tool' */
+  messages?: Array<{ role: string; message?: string; content?: string; time?: number }>;
+  artifact?: { recordingUrl?: string; videoRecordingUrl?: string };
+}
+
+export async function fetchVapiCall(vapiApiKey: string, vapiCallId: string): Promise<VapiCallDetails> {
+  const data = await vapiRequest(`/call/${vapiCallId}`, vapiApiKey);
+  return data as unknown as VapiCallDetails;
+}
+
+/** Extract a plain-text "Role: message" transcript from a VAPI call details object. */
+export function transcriptFromVapiCall(call: VapiCallDetails): string | null {
+  // Prefer the top-level transcript string (already formatted)
+  if (typeof call.transcript === "string" && call.transcript.trim()) {
+    return call.transcript.trim();
+  }
+  // Fall back to building from the messages array
+  if (Array.isArray(call.messages)) {
+    const lines = call.messages
+      .filter((m) => m.role !== "system" && m.role !== "tool")
+      .map((m) => {
+        const role = m.role === "bot" ? "AI" : m.role === "user" ? "User" : m.role;
+        const text = (m.message ?? m.content ?? "").trim();
+        return text ? `${role}: ${text}` : null;
+      })
+      .filter(Boolean);
+    return lines.length > 0 ? lines.join("\n") : null;
+  }
+  return null;
+}
+
 // ─── Prompt interpolation ────────────────────────────────────────────────────
 
 /**

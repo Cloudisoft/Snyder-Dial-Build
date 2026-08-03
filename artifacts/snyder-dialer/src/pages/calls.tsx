@@ -19,7 +19,7 @@ export default function Calls() {
   const [search, setSearch] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  const { data: calls = [], isLoading, isFetching, dataUpdatedAt } = useQuery({
+  const { data: calls = [], isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
     queryKey: ['calls', 'all'],
     queryFn: fetchAllCalls,
     refetchInterval: 15_000,
@@ -100,7 +100,7 @@ export default function Calls() {
           ) : filtered.length > 0 ? (
             <div>
               {filtered.map((call) => (
-                <CallRow key={call.id} call={call} showCampaign data-testid={`call-row-${call.id}`} />
+                <CallRow key={call.id} call={call} showCampaign onSync={() => refetch()} data-testid={`call-row-${call.id}`} />
               ))}
             </div>
           ) : (

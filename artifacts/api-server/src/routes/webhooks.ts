@@ -161,6 +161,41 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           .where(eq(callLogsTable.vapiCallId, callId));
       }
 
+    } else if (eventType === "conversation-update") {
+      // VAPI sends this on every new message during the call — the payload
+      // contains the FULL conversation so far (not a delta).  We update the
+      // live transcript so the UI can show it while the call is in progress.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const convo: Array<{ role: string; message?: string; content?: string }> =
+        message?.conversation ?? message?.messages ?? [];
+
+      if (convo.length > 0) {
+        const transcript = convo
+          .filter((m) => m.role !== "system" && m.role !== "tool")
+          .map((m) => {
+            const role = m.role === "bot" ? "AI" : m.role === "user" ? "User" : m.role;
+            const text = (m.message ?? m.content ?? "").trim();
+            return text ? `${role}: ${text}` : null;
+          })
+          .filter(Boolean)
+          .join("\n");
+
+        if (transcript) {
+          // Only update while the call is still active — the end-of-call-report
+          // is the authoritative source for terminal calls.
+          const TERMINAL = ["completed", "failed", "no_answer", "voicemail"] as const;
+          await db
+            .update(callLogsTable)
+            .set({ transcript })
+            .where(
+              and(
+                eq(callLogsTable.vapiCallId, callId),
+                notInArray(callLogsTable.status, [...TERMINAL]),
+              ),
+            );
+        }
+      }
+
     } else if (eventType === "hang") {
       // VAPI fires "hang" when any party hangs up, followed immediately by
       // "end-of-call-report" which carries the real outcome and endedReason.

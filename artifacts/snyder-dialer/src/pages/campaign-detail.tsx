@@ -50,7 +50,7 @@ export default function CampaignDetail() {
   const { data: stats } = useGetCampaignStats(campaignId);
   const { data: leads } = useListLeads(campaignId);
   const { data: kbFiles } = useListKnowledgeBaseFiles(campaignId);
-  const { data: calls = [], isFetching: callsFetching } = useListCalls(campaignId, {
+  const { data: calls = [], isFetching: callsFetching, refetch: refetchCalls } = useListCalls(campaignId, {
     query: { refetchInterval: 15_000, staleTime: 10_000 },
   });
   const [callsFilter, setCallsFilter] = useState<FilterId>('all');
@@ -397,7 +397,7 @@ export default function CampaignDetail() {
             <div className="divide-y divide-card-border">
               {calls && calls.length > 0 ? (
                 calls.slice(0, 5).map((call) => (
-                  <CallRow key={call.id} call={call} data-testid={`call-${call.id}`} />
+                  <CallRow key={call.id} call={call} onSync={() => refetchCalls()} data-testid={`call-${call.id}`} />
                 ))
               ) : (
                 <div className="px-6 py-12 text-center text-muted-foreground">No calls yet</div>
@@ -605,7 +605,7 @@ export default function CampaignDetail() {
                   <div>
                     {filtered.length > 0 ? (
                       filtered.map((call) => (
-                        <CallRow key={call.id} call={call as Parameters<typeof CallRow>[0]['call']} data-testid={`call-detail-${call.id}`} />
+                        <CallRow key={call.id} call={call as Parameters<typeof CallRow>[0]['call']} onSync={() => refetchCalls()} data-testid={`call-detail-${call.id}`} />
                       ))
                     ) : (
                       <div className="px-6 py-12 text-center text-muted-foreground">

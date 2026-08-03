@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { ChevronDown, ChevronRight, Clock, MessageSquare, Mic, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, MessageSquare, Mic, ExternalLink, RefreshCw, Radio } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { Link } from 'wouter';
+import { getToken } from '@/lib/auth';
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 export interface CallRecord {
   id: number;
   campaignId?: number | null;
   campaignName?: string | null;
+  leadId?: number | null;
   leadName?: string | null;
   leadPhone?: string | null;
+  vapiCallId?: string | null;
   status: string;
   duration?: number | null;
   transcript?: string | null;
@@ -121,14 +124,43 @@ function speakerClass(speaker: string): string {
 interface CallRowProps {
   call: CallRecord;
   showCampaign?: boolean;
+  onSync?: () => void;
   'data-testid'?: string;
 }
 
-export function CallRow({ call, showCampaign = false, 'data-testid': testId }: CallRowProps) {
+export function CallRow({ call, showCampaign = false, onSync, 'data-testid': testId }: CallRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+
   const hasTranscript = Boolean(call.transcript?.trim());
   const turns = hasTranscript ? parseTranscript(call.transcript!) : [];
   const disposition = getDisposition(call);
+  const isLive = disposition === 'in_progress';
+
+  const canSync = Boolean(call.vapiCallId);
+  const needsSync = canSync && (!call.recordingUrl || !call.transcript);
+
+  async function handleSync(e: React.MouseEvent) {
+    e.stopPropagation();
+    setSyncing(true);
+    setSyncError(null);
+    try {
+      const res = await fetch(`${BASE}/api/calls/${call.id}/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Sync failed' }));
+        throw new Error(err.error ?? 'Sync failed');
+      }
+      onSync?.();
+    } catch (err: unknown) {
+      setSyncError(err instanceof Error ? err.message : 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   return (
     <div data-testid={testId} className="border-b border-card-border last:border-b-0">
@@ -145,6 +177,11 @@ export function CallRow({ call, showCampaign = false, 'data-testid': testId }: C
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="font-medium truncate">{call.leadName ?? 'Unknown'}</p>
+              {isLive && (
+                <span className="flex items-center gap-1 text-xs text-blue-500 font-semibold animate-pulse">
+                  <Radio className="w-3 h-3" /> LIVE
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               <p className="text-sm text-muted-foreground font-mono">{call.leadPhone ?? '—'}</p>
@@ -231,6 +268,11 @@ export function CallRow({ call, showCampaign = false, 'data-testid': testId }: C
                   <ExternalLink className="w-4 h-4" />
                 </a>
               </div>
+            ) : isLive ? (
+              <p className="text-sm text-muted-foreground italic flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+                Recording in progress…
+              </p>
             ) : (
               <p className="text-sm text-muted-foreground italic">No recording available.</p>
             )}
@@ -239,8 +281,14 @@ export function CallRow({ call, showCampaign = false, 'data-testid': testId }: C
           {/* Transcript */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3 flex items-center gap-1.5">
-              <MessageSquare className="w-3 h-3" /> Transcript
-              {hasTranscript && (
+              <MessageSquare className="w-3 h-3" />
+              {isLive ? 'Live Transcript' : 'Transcript'}
+              {isLive && (
+                <span className="ml-1 inline-flex items-center gap-1 text-blue-500 font-normal normal-case animate-pulse">
+                  <Radio className="w-3 h-3" /> updating
+                </span>
+              )}
+              {hasTranscript && !isLive && (
                 <span className="ml-1 text-muted-foreground/60 normal-case font-normal">({turns.length} turns)</span>
               )}
             </p>
@@ -256,11 +304,48 @@ export function CallRow({ call, showCampaign = false, 'data-testid': testId }: C
                     <p className="leading-relaxed text-foreground/90">{turn.text}</p>
                   </div>
                 ))}
+                {isLive && (
+                  <div className="flex gap-3 items-start text-sm opacity-50">
+                    <span className="shrink-0 text-xs font-semibold px-2 py-0.5 rounded mt-0.5 bg-primary/10 text-primary border border-primary/20">AI</span>
+                    <p className="leading-relaxed">
+                      <span className="inline-flex gap-0.5 items-center">
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:0ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:150ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-bounce [animation-delay:300ms]" />
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : isLive ? (
+              <div className="rounded border border-border bg-background p-4 text-sm text-muted-foreground flex items-center gap-2">
+                <span className="inline-flex gap-0.5 items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:0ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:150ms]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce [animation-delay:300ms]" />
+                </span>
+                Conversation starting…
               </div>
             ) : (
               <p className="text-sm text-muted-foreground italic">No transcript available for this call.</p>
             )}
           </div>
+
+          {/* Sync from VAPI */}
+          {canSync && (
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                title="Fetch latest transcript and recording from VAPI"
+              >
+                <RefreshCw className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing from VAPI…' : needsSync ? 'Fetch recording & transcript from VAPI' : 'Re-sync from VAPI'}
+              </button>
+              {syncError && <span className="text-xs text-destructive">{syncError}</span>}
+            </div>
+          )}
         </div>
       )}
     </div>
