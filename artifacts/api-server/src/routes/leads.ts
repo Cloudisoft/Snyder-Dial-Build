@@ -145,10 +145,36 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
   let skipped = 0;
   const insertedIds: number[] = [];
 
+  /** Case-insensitive, whitespace-tolerant column lookup. Returns first non-empty match or "". */
+  const col = (row: Record<string, string>, ...keys: string[]): string => {
+    const lower = Object.fromEntries(Object.entries(row).map(([k, v]) => [k.toLowerCase().trim(), v?.trim() ?? ""]));
+    for (const key of keys) {
+      const v = lower[key.toLowerCase().trim()];
+      if (v) return v;
+    }
+    return "";
+  };
+
   for (const row of records) {
-    // Support multiple column name variants
-    const name = row["name"] || row["Name"] || row["full_name"] || row["Full Name"] || "";
-    const rawPhone = row["phone"] || row["Phone"] || row["phone_number"] || row["Phone Number"] || "";
+    // Try a combined name column first, then fall back to first + last
+    let name = col(row,
+      "name", "full name", "full_name", "contact name", "contact_name",
+      "lead name", "lead_name", "client name", "client_name"
+    );
+    if (!name) {
+      const first = col(row, "first name", "first_name", "firstname");
+      const last  = col(row, "last name",  "last_name",  "lastname");
+      if (first || last) name = [first, last].filter(Boolean).join(" ");
+    }
+
+    const rawPhone = col(row,
+      "phone", "phone number", "phone_number",
+      "mobile", "mobile number", "mobile_number", "mobile phone", "mobile_phone",
+      "cell", "cell number", "cell_number", "cell phone", "cell_phone",
+      "telephone", "tel", "work phone", "work_phone", "direct phone", "direct_phone",
+      "contact phone", "contact_phone", "number"
+    );
+
     if (!name || !rawPhone) { skipped++; continue; }
     const phone = normalizePhone(rawPhone);
 
@@ -156,9 +182,9 @@ router.post("/campaigns/:id/leads/upload", requireAuth, upload.single("file"), a
       campaignId,
       name,
       phone,
-      email: row["email"] || row["Email"] || null,
-      company: row["company"] || row["Company"] || null,
-      notes: row["notes"] || row["Notes"] || null,
+      email:   col(row, "email", "email address", "email_address", "e-mail") || null,
+      company: col(row, "company", "company name", "company_name", "organization", "employer", "business") || null,
+      notes:   col(row, "notes", "note", "comments", "comment", "description") || null,
       status: "pending",
     }).returning();
     insertedIds.push(lead.id);
