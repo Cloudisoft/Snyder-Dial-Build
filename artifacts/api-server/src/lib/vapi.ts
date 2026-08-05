@@ -264,15 +264,20 @@ export async function initiateVapiCall(opts: VapiCallOptions): Promise<VapiCallR
     body = {
       type: "outboundPhoneCall",
       assistantId: opts.assistantId,
-      // Override first message and system prompt per-call with lead-specific values.
+      // Override first message, system prompt, AND webhook URL per-call.
       // provider + model must be included because VAPI shallow-merges nested objects —
       // specifying only `messages` would cause provider/model-name to be lost.
+      // The server URL override ensures webhooks always reach the current deployment
+      // regardless of what URL was last saved on the assistant globally.
       assistantOverrides: {
         firstMessage,
         model: {
           provider: "openai",
           model: "gpt-4o-mini",
           messages: [{ role: "system", content: interpolatedPrompt }],
+        },
+        server: {
+          url: opts.webhookUrl,
         },
       },
       phoneNumberId: opts.phoneNumberId,

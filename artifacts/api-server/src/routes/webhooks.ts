@@ -78,7 +78,7 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           (new Date(vapiEndedAt).getTime() - new Date(vapiStartedAt).getTime()) / 1000
         );
       } else if (typeof message?.durationSeconds === "number") {
-        duration = message.durationSeconds;
+        duration = Math.round(message.durationSeconds);
       }
 
       // Transcript from end-of-call-report or messages array
