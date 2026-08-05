@@ -44,7 +44,35 @@ export async function runStartupMigrations(): Promise<void> {
       ADD COLUMN IF NOT EXISTS concurrency integer NOT NULL DEFAULT 1
   `);
 
-  // 2. Reconcile counters for every campaign from source-of-truth tables.
+  // 2. Reset leads stuck in "calling" with no matching in-progress call_log.
+  //    These accumulate when VAPI never fires a webhook for a call (e.g. call
+  //    never connected).  Without this they permanently block the dialer's
+  //    active-count check.
+  await db.execute(sql`
+    UPDATE leads l
+    SET status = 'pending'
+    WHERE l.status = 'calling'
+      AND NOT EXISTS (
+        SELECT 1 FROM call_logs cl
+        WHERE cl.lead_id = l.id
+          AND cl.status = 'initiated'
+          AND cl.ended_at IS NULL
+      )
+  `);
+
+  // Also close any call_log rows that are still 'initiated' but have no
+  // matching in-progress VAPI call (ended_at already set by VAPI or stuck).
+  await db.execute(sql`
+    UPDATE call_logs
+    SET status = 'failed',
+        outcome = 'Orphaned call — reset at startup',
+        ended_at = NOW()
+    WHERE status = 'initiated'
+      AND ended_at IS NULL
+      AND started_at < NOW() - INTERVAL '30 minutes'
+  `);
+
+  // 3. Reconcile counters for every campaign from source-of-truth tables.
   //    Runs unconditionally so drift (stale non-zero values) is also repaired.
   await db.execute(sql`
     UPDATE campaigns c

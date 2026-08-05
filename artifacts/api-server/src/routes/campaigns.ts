@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, count, and } from "drizzle-orm";
+import { eq, count, and, sql } from "drizzle-orm";
 import { db, campaignsTable, leadsTable, callLogsTable, activityLogTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth";
 import { fillConcurrencySlots } from "../lib/dialer";
@@ -96,6 +96,34 @@ router.post("/campaigns/:id/launch", requireAuth, async (req, res): Promise<void
     .where(and(eq(campaignsTable.id, id), eq(campaignsTable.userId, req.auth!.userId)))
     .returning();
   if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return; }
+
+  // Reset any leads stuck in "calling" from a previous run back to "pending".
+  // This happens when a campaign was paused/restarted and VAPI never fired the
+  // end-of-call webhook, leaving leads stranded in "calling" forever.
+  const resetLeads = await db
+    .update(leadsTable)
+    .set({ status: "pending" })
+    .where(and(eq(leadsTable.campaignId, id), eq(leadsTable.status, "calling")))
+    .returning({ leadId: leadsTable.id });
+
+  if (resetLeads.length > 0) {
+    logger.info({ campaignId: id, count: resetLeads.length }, "Reset stuck 'calling' leads to 'pending' on launch");
+    // Close the orphaned call_log rows so they don't pollute stats
+    await db
+      .update(callLogsTable)
+      .set({
+        status: "failed",
+        outcome: "Stuck in calling state — reset on relaunch",
+        endedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(callLogsTable.campaignId, id),
+          eq(callLogsTable.status, "initiated"),
+          sql`${callLogsTable.endedAt} IS NULL`,
+        ),
+      );
+  }
 
   await db.insert(activityLogTable).values({
     type: "campaign_launched",
