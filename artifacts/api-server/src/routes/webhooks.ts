@@ -17,24 +17,57 @@ import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-// Map VAPI end reasons to our call_logs status values
+/**
+ * Map VAPI's endedReason to a granular call disposition stored in call_logs.status.
+ *
+ * Full VAPI endedReason vocabulary (as of 2026):
+ *   assistant-ended-call, customer-ended-call, assistant-forwarded-call,
+ *   customer-did-not-answer, voicemail, machine-detected-greeting,
+ *   machine-end-greeting, machine-end-other, machine-end-silence,
+ *   busy, failed, no-answer, exceeded-max-duration, silence-timed-out,
+ *   pipeline-error, assistant-error, transfer-failed, call-start-error-*
+ */
 function vapiEndReasonToStatus(endedReason: string | undefined): string {
   if (!endedReason) return "completed";
   const r = endedReason.toLowerCase();
-  if (r.includes("no-answer") || r.includes("no_answer") || r.includes("busy")) return "no_answer";
-  // "machine-*" reasons mean voicemail detection — not a failure
-  if (r.includes("machine") || r.includes("voicemail")) return "voicemail";
-  // Only explicit error/failed reasons are true failures
-  if (r === "failed" || r.includes("assistant-error") || r.includes("pipeline-error")) return "failed";
+
+  // Customer hung up mid-call
+  if (r === "customer-ended-call" || r.includes("customer-hangup")) return "hung_up";
+
+  // Call was transferred/forwarded to a human
+  if (r === "assistant-forwarded-call" || r.startsWith("transfer") || r.includes("forward")) return "transferred";
+
+  // Voicemail: actually left a voicemail message
+  if (r === "voicemail") return "voicemail";
+
+  // Answering machine: detected machine/VM but did not leave message
+  if (r.includes("machine")) return "answering_machine";
+
+  // No answer: rang but nobody picked up
+  if (
+    r === "no-answer" || r === "no_answer" ||
+    r === "customer-did-not-answer" ||
+    r === "silence-timed-out"
+  ) return "no_answer";
+
+  // Line disconnected / busy / connection error
+  if (r === "busy" || r === "failed" || r.includes("call-error") || r.includes("network-error")) return "disconnected";
+
+  // Technical pipeline/AI errors
+  if (r.includes("assistant-error") || r.includes("pipeline-error") || r === "transfer-failed") return "failed";
+
+  // Normal AI-ended call or hit time limit
   return "completed";
 }
 
-// Map call status to lead status
+/** Map terminal call status → lead status (was the lead reached?) */
 function callStatusToLeadStatus(callStatus: string): string {
-  if (callStatus === "completed") return "completed";
-  if (callStatus === "failed") return "failed";
-  if (callStatus === "no_answer") return "failed";
-  if (callStatus === "voicemail") return "completed";
+  // Calls where we reached a human (positive outcome)
+  if (["completed", "transferred", "hung_up"].includes(callStatus)) return "completed";
+  // Left voice message — attempt logged, may need follow-up
+  if (callStatus === "voicemail" || callStatus === "answering_machine") return "completed";
+  // Never connected
+  if (["failed", "disconnected", "no_answer"].includes(callStatus)) return "failed";
   return "completed";
 }
 
@@ -91,9 +124,10 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
           .join("\n");
       }
 
-      // Summary / outcome
+      // Summary / outcome — prefer AI analysis summary; fall back to human-readable endedReason
       const outcome: string | null =
-        message?.summary ?? message?.analysis?.summary ?? null;
+        message?.summary ?? message?.analysis?.summary ??
+        (endedReason ? `Call ended: ${endedReason.replace(/-/g, " ")}` : null);
 
       // Recording URL — VAPI provides this on call-ended / end-of-call-report
       const recordingUrl: string | null =
@@ -103,7 +137,10 @@ router.post("/webhooks/vapi", async (req, res): Promise<void> => {
         null;
 
       // Terminal states — counters must only increment once per call.
-      const TERMINAL_STATUSES = ["completed", "failed", "no_answer", "voicemail"] as const;
+      const TERMINAL_STATUSES = [
+        "completed", "failed", "no_answer", "voicemail",
+        "hung_up", "transferred", "answering_machine", "disconnected",
+      ] as const;
 
       // Step 1: Transition from non-terminal → terminal.
       // This sets status, increments counters, and writes all enrichment fields.
